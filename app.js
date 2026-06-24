@@ -454,20 +454,23 @@ function openNote(ex,title,tr){
 // EXCEL IMPORT
 // ═══════════════════════════════════════════════
 function parseExcel(wb,filename){
-  const result=[];
-  if(!wb||!wb.SheetNames||!wb.SheetNames.length)return[makeBlock('Imported',0)];
-  // Skip helper sheets
-  const skip=['how to use','program rules','rpe scale','lift progress'];
-  const sheets=wb.SheetNames.filter(n=>!skip.some(s=>n.toLowerCase().includes(s)));
-  const useSheets=sheets.length?sheets:wb.SheetNames.slice(0,1);
-  useSheets.forEach(name=>{
-    const ws=wb.Sheets[name];if(!ws)return;
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
-    if(!rows||!rows.length)return;
-    const block=parseSheet(rows,name);
-    if(block)result.push(block);
-  });
-  return result.length?result:[makeBlock('Imported',0)];
+  try{
+    const result=[];
+    if(!wb||!wb.SheetNames||!wb.SheetNames.length)return[makeBlock('Imported',0)];
+    const skip=['how to use','program rules','rpe scale','lift progress'];
+    const sheets=wb.SheetNames.filter(n=>typeof n==='string'&&!skip.some(s=>n.toLowerCase().includes(s)));
+    const useSheets=sheets.length?sheets:wb.SheetNames.slice(0,1);
+    useSheets.forEach(name=>{
+      try{
+        const ws=wb.Sheets[name];if(!ws)return;
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        if(!rows||!rows.length)return;
+        const block=parseSheet(rows,typeof name==='string'?name:'Imported');
+        if(block)result.push(block);
+      }catch(e){console.error('Sheet parse error:',e);}
+    });
+    return result.length?result:[makeBlock('Imported',0)];
+  }catch(e){console.error('parseExcel error:',e);return[makeBlock('Imported',0)];}
 }
 function parseSheet(rows,name){
   try{
