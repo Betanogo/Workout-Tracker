@@ -1,31 +1,22 @@
-const CACHE = 'tatelift-v1';
+const CACHE = 'tatelift-v3';
 const ASSETS = [
   './',
-  './workout.html',
+  './index.html',
+  './app.js',
   './manifest.json',
+  './V3_White.png',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-  'https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap',
-  'https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHQ.woff2',
-  'https://fonts.gstatic.com/s/dmmono/v14/aFTU7vBl4hksyDMnhKsGrJEA.woff2',
+  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap',
 ];
 
-// Install — cache everything
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(cache => {
-      // Cache core assets, ignore CDN failures gracefully
-      return Promise.allSettled(
-        ASSETS.map(url =>
-          cache.add(url).catch(() => {
-            console.warn('SW: could not cache', url);
-          })
-        )
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache =>
+      Promise.allSettled(ASSETS.map(url => cache.add(url).catch(()=>{})))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// Activate — clean old caches
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -34,26 +25,29 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch — cache first, fallback to network
 self.addEventListener('fetch', e => {
-  // Only handle GET requests
-  if (e.request.method !== 'GET') return;
-
+  if(e.request.method !== 'GET') return;
+  // Always fetch fresh for app.js and index.html
+  const url = new URL(e.request.url);
+  if(url.pathname.endsWith('app.js') || url.pathname.endsWith('index.html')) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      // Not in cache — fetch from network and cache it
-      return fetch(e.request).then(response => {
-        if (!response || response.status !== 200) return response;
-        const clone = response.clone();
-        caches.open(CACHE).then(cache => cache.put(e.request, clone));
-        return response;
-      }).catch(() => {
-        // Offline and not cached — return app shell for HTML requests
-        if (e.request.destination === 'document') {
-          return caches.match('./workout.html');
-        }
-      });
+      if(cached) return cached;
+      return fetch(e.request).then(res => {
+        if(!res || res.status !== 200) return res;
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }).catch(() => caches.match('./index.html'));
     })
   );
 });
