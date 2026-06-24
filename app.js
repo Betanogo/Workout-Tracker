@@ -761,7 +761,27 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('bw-input').addEventListener('input',e=>lifts.bw=parseAsKg(e.target.value));
   document.getElementById('prog-title').addEventListener('input',()=>{});
   document.getElementById('btn-add-block').addEventListener('click',()=>{blocks.push(makeBlock('New Block',blocks.length));renderProgram();showToast('Block added');});
-  document.getElementById('btn-import').addEventListener('click',()=>document.getElementById('excel-input').click());
+  document.getElementById('btn-import').addEventListener('click',()=>{
+    const input=document.createElement('input');
+    input.type='file';
+    input.accept='.xlsx,.xlsm,.xls';
+    input.onchange=function(){
+      if(!this.files.length)return;
+      const file=this.files[0];
+      const reader=new FileReader();
+      reader.onload=e=>{
+        try{
+          const wb=XLSX.read(e.target.result,{type:'array'});
+          pendingImport=parseExcel(wb,file.name);
+          document.getElementById('import-sub').textContent='Found '+pendingImport.length+' block(s), '+pendingImport.reduce((s,b)=>s+b.weeks.length,0)+' weeks from "'+file.name+'"';
+          document.getElementById('import-preview').innerHTML=pendingImport.map(b=>'<span style="color:var(--acc)">'+b.name+'</span><br>'+b.weeks.map(w=>'  '+w.label+': '+w.days.length+' days').join('<br>')).join('<br><br>');
+          document.getElementById('modal-import').classList.remove('hidden');
+        }catch(err){showToast('Import failed: '+err.message);console.error(err);}
+      };
+      reader.readAsArrayBuffer(file);
+    };
+    input.click();
+  });
   document.getElementById('btn-clear-log').addEventListener('click',()=>confirmAction('Clear all logs?','Cannot be undone.',()=>{localStorage.removeItem(LOG_KEY);renderLog();}));
   ['c1rm','crpe','creps'].forEach(id=>document.getElementById(id).addEventListener('input',updateCalc));
   document.getElementById('fab').addEventListener('click',()=>{
