@@ -191,14 +191,19 @@ function renderProgram(){
 function renderBlock(block,bi,curId){
   const wrap=document.createElement('div');wrap.className='block-wrap';wrap.dataset.bid=block.id;
   const hdr=document.createElement('div');hdr.className='block-header';
-  hdr.innerHTML='<span class="drag-handle">⠿</span>'
+  hdr.innerHTML=''
+    +'<div class="block-hdr-top">'
+    +'<span class="drag-handle">⠿</span>'
     +'<span class="block-dot '+block.color+'"></span>'
     +'<input class="block-name-in" value="'+(block.name||'')+'" placeholder="Block name"/>'
+    +'</div>'
+    +'<div class="block-hdr-btns">'
     +'<button class="pill-btn acc" data-a="add-week">+Week</button>'
     +'<button class="pill-btn red" data-a="rem-week">−Week</button>'
     +'<button class="pill-btn acc" data-a="copy">Copy</button>'
     +'<button class="pill-btn" data-a="archive">Archive</button>'
-    +'<button class="pill-btn red" data-a="delete">Delete</button>';
+    +'<button class="pill-btn red" data-a="delete">Delete</button>'
+    +'</div>';
   hdr.querySelector('.block-name-in').addEventListener('input',e=>block.name=e.target.value);
   hdr.querySelectorAll('[data-a]').forEach(btn=>btn.addEventListener('click',()=>blockAction(btn.dataset.a,block.id)));
   wrap.appendChild(hdr);
