@@ -455,32 +455,54 @@ function openNote(ex,title,tr){
 // ═══════════════════════════════════════════════
 function parseExcel(wb,filename){
   const result=[];
-  const templateSheet=wb.SheetNames.find(n=>n.toLowerCase().includes('template')||n.toLowerCase().includes('week'));
-  const sheets=templateSheet?[templateSheet]:wb.SheetNames.slice(0,3);
-  sheets.forEach(name=>{
+  if(!wb||!wb.SheetNames||!wb.SheetNames.length)return[makeBlock('Imported',0)];
+  // Skip helper sheets
+  const skip=['how to use','program rules','rpe scale','lift progress'];
+  const sheets=wb.SheetNames.filter(n=>!skip.some(s=>n.toLowerCase().includes(s)));
+  const useSheets=sheets.length?sheets:wb.SheetNames.slice(0,1);
+  useSheets.forEach(name=>{
     const ws=wb.Sheets[name];if(!ws)return;
     const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+    if(!rows||!rows.length)return;
     const block=parseSheet(rows,name);
     if(block)result.push(block);
   });
   return result.length?result:[makeBlock('Imported',0)];
 }
 function parseSheet(rows,name){
-  const block=makeBlock(name,blocks.length%BLOCK_COLS.length);block.weeks=[];
-  let cw=null,cd=null;
-  rows.forEach(row=>{
-    if(!row||!row.some(v=>v!=null))return;
-    const wk=String(row[1]||'').trim(),day=String(row[2]||'').trim();
-    const exNum=row[3],workout=String(row[4]||'').trim();
-    const rpe=row[5]!=null?String(row[5]):'',tempo=row[10]!=null?String(row[10]):'';
-    const sets=row[11]!=null?String(row[11]):'',reps=row[12]!=null?String(row[12]):'';
-    if(wk.toLowerCase().includes('week')){cw={id:uid(),label:wk,date:'',done:false,days:[]};block.weeks.push(cw);cd=null;}
-    if(day.toLowerCase().includes('day')){cd={id:uid(),name:day.replace(/\n/g,' ').trim(),date:'',done:false,media:[],exercises:[]};if(!cw){cw={id:uid(),label:'Week 1',date:'',done:false,days:[]};block.weeks.push(cw);}cw.days.push(cd);}
-    if(workout&&exNum!=null&&cd){exNames.add(workout);cd.exercises.push({id:uid(),workout,rpe,tempo,sets,reps,done:false,note:''});}
-  });
-  block.weeks=block.weeks.filter(w=>w.days.filter(d=>d.exercises.length>0).length>0);
-  block.weeks.forEach(w=>w.days=w.days.filter(d=>d.exercises.length>0));
-  return block.weeks.length?block:null;
+  try{
+    const safeName=(name&&typeof name==='string')?name:'Imported';
+    const block=makeBlock(safeName,blocks.length%BLOCK_COLS.length);block.weeks=[];
+    let cw=null,cd=null;
+    rows.forEach(row=>{
+      if(!row||!Array.isArray(row)||!row.some(v=>v!=null))return;
+      const wk=String(row[1]||'').trim();
+      const day=String(row[2]||'').replace(/\n/g,' ').trim();
+      const exNum=row[3];
+      const workout=String(row[4]||'').trim();
+      const rpe=row[5]!=null?String(row[5]):'';
+      const tempo=row[10]!=null?String(row[10]):'';
+      const sets=row[11]!=null?String(row[11]):'';
+      const reps=row[12]!=null?String(row[12]):'';
+      if(wk.toLowerCase().includes('week')&&!wk.toLowerCase().includes('workout')){
+        cw={id:uid(),label:wk,date:'',done:false,days:[]};block.weeks.push(cw);cd=null;
+      }
+      if(day.toLowerCase().includes('day')){
+        cd={id:uid(),name:day,date:'',done:false,media:[],exercises:[]};
+        if(!cw){cw={id:uid(),label:'Week 1',date:'',done:false,days:[]};block.weeks.push(cw);}
+        cw.days.push(cd);
+      }
+      if(workout&&exNum!=null&&cd){
+        exNames.add(workout);
+        cd.exercises.push({id:uid(),workout,rpe,tempo,sets:String(sets),reps:String(reps),done:false,note:''});
+      }
+    });
+    block.weeks=block.weeks.filter(w=>(w.days||[]).some(d=>(d.exercises||[]).length>0));
+    block.weeks.forEach(w=>w.days=w.days.filter(d=>(d.exercises||[]).length>0));
+    return block.weeks.length?block:null;
+  }catch(err){
+    console.error('parseSheet error:',err);return null;
+  }
 }
 
 // ═══════════════════════════════════════════════
