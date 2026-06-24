@@ -1,6 +1,6 @@
 {
-  "name": "LIFTIQ — Workout Tracker",
-  "short_name": "LIFTIQ",
+  "name": "TATELIFT — Workout Tracker",
+  "short_name": "TATELIFT",
   "description": "파워리프팅 워크아웃 트래커",
   "start_url": "./workout.html",
   "display": "standalone",
