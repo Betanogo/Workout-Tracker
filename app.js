@@ -422,7 +422,7 @@ function makeSortable(container,itemSel,handleSel,onDrop){
 // TIMER
 // ═══════════════════════════════════════════════
 const circumference=2*Math.PI*68;
-window.addEventListener('DOMContentLoaded',()=>{
+(()=>{
   const tc=document.getElementById('timer-circle');
   if(tc)tc.style.strokeDasharray=circumference;
 });
@@ -794,8 +794,15 @@ window.addEventListener('DOMContentLoaded',()=>{
     saveAll();showToast('Saved ✓');
   });
 
-  // Service worker
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+  // Service worker — network first for updates, cache for offline
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg=>{
+        // Force update check every time
+        reg.update();
+      })
+      .catch(()=>{});
+  }
 
   // Boot
   loadAll();
@@ -803,4 +810,4 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(!blocks.length)blocks.push(makeBlock('My Program',0));
   renderProgram();
   renderStats();
-});
+})();
