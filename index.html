@@ -255,6 +255,27 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 .block-hdr-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:6px;}
 .block-header{flex-direction:column;align-items:flex-start;}
 
+/* ── EXERCISE CARD (mobile-first) ── */
+.ex-list{padding:8px 10px 2px;}
+.ex-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:opacity .15s;}
+.ex-card-done{opacity:.4;}
+.ex-row{display:flex;align-items:center;gap:8px;padding:8px 10px;}
+.ex-row-header{border-bottom:1px solid var(--border);}
+.ex-drag{color:var(--text3);font-size:13px;cursor:grab;flex-shrink:0;}
+.ex-name-wrap{flex:1;position:relative;min-width:0;}
+.ex-name-in{background:none;border:none;color:var(--text);font-family:var(--fb);font-size:13px;font-weight:500;outline:none;width:100%;padding:2px 0;}
+.ex-name-in::placeholder{color:var(--text3);}
+.ex-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.ex-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:0;}
+.ex-metric{display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-right:1px solid var(--border);}
+.ex-metric:last-child{border-right:none;}
+.ex-metric-label{font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;}
+.ex-metric-in{background:none;border:none;color:var(--text);font-family:var(--fm);font-size:13px;font-weight:600;outline:none;width:100%;text-align:center;padding:0;}
+.ex-metric-in::placeholder{color:var(--text3);font-weight:400;}
+.ex-metric-weight{background:var(--acc-dim);}
+.wt-val{font-family:var(--fm);font-size:13px;font-weight:700;color:var(--acc);text-align:center;}
+.wt-alt{font-size:9px;color:var(--text3);text-align:center;margin-top:1px;}
+
 /* Block colors */
 .bc0{background:#e06c00}.bc1{background:#00b4a0}.bc2{background:#9b6dff}.bc3{background:#e06060}.bc4{background:#60a0e0}.bc5{background:#7ec87e}
 </style>

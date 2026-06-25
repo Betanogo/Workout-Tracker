@@ -298,48 +298,65 @@ function renderDay(day,block,week,di,curId){
   card.appendChild(hdr);
   const body=document.createElement('div');
   body.className='day-body'+(day.id===curId?' open':'');
-  const scroll=document.createElement('div');scroll.className='ex-scroll';
-  const tbl=document.createElement('table');tbl.className='ex-table';
-  tbl.innerHTML='<thead><tr>'
-    +'<th style="width:18px"></th><th style="width:16px"></th>'
-    +'<th>Exercise</th>'
-    +'<th class="c" style="width:40px">RPE</th>'
-    +'<th class="c" style="width:40px">Tempo</th>'
-    +'<th class="c" style="width:34px">Sets</th>'
-    +'<th class="c" style="width:34px">Reps</th>'
-    +'<th class="c" style="width:62px">Weight</th>'
-    +'<th class="c" style="width:24px">✓</th>'
-    +'<th class="c" style="width:22px">✎</th>'
-    +'<th class="c" style="width:20px"></th>'
-    +'</tr></thead>';
-  const tbody=document.createElement('tbody');
-  day.exercises.forEach((ex,ei)=>tbody.appendChild(makeExRow(ex,day,ei,tbody)));
-  tbl.appendChild(tbody);scroll.appendChild(tbl);body.appendChild(scroll);
+  const exList=document.createElement('div');exList.className='ex-list';
+  day.exercises.forEach((ex,ei)=>exList.appendChild(makeExRow(ex,day,ei,exList)));
+  body.appendChild(exList);
   const addBtn=document.createElement('button');addBtn.className='add-ex-btn';addBtn.textContent='+ Add exercise';
-  addBtn.addEventListener('click',()=>{const ex=makeEx();day.exercises.push(ex);tbody.appendChild(makeExRow(ex,day,day.exercises.length-1,tbody));});
+  addBtn.addEventListener('click',()=>{const ex=makeEx();day.exercises.push(ex);exList.appendChild(makeExRow(ex,day,day.exercises.length-1,exList));});
   body.appendChild(addBtn);
   card.appendChild(body);
   return card;
 }
 
-function makeExRow(ex,day,ei,tbody){
-  const tr=document.createElement('tr');
-  tr.className=ex.done?'ex-done-row':'';
-  tr.innerHTML='<td class="rh drag-handle" style="cursor:grab">⠿</td>'
-    +'<td class="rh">'+(ei+1)+'</td>'
-    +'<td class="ac-wrap"><input class="ex-in" value="'+(ex.workout||'')+'" placeholder="Exercise"/><div class="ac-list"></div></td>'
-    +'<td><input class="ex-in mono" type="text" inputmode="decimal" value="'+(ex.rpe||'')+'" placeholder="—" style="width:40px"/></td>'
-    +'<td><input class="ex-in mono" type="text" inputmode="numeric" value="'+(ex.tempo||'')+'" placeholder="311" maxlength="3" style="width:40px"/></td>'
-    +'<td><input class="ex-in mono" type="text" inputmode="numeric" value="'+(ex.sets||'')+'" placeholder="—" style="width:34px"/></td>'
-    +'<td><input class="ex-in mono" type="text" inputmode="numeric" value="'+(ex.reps||'')+'" placeholder="—" style="width:34px"/></td>'
-    +'<td><div class="wt-val">—</div><div class="wt-alt"></div></td>'
-    +'<td><div class="check-box'+(ex.done?' done':'')+'" style="margin:0 auto;width:20px;height:20px;font-size:10px">'+(ex.done?'✓':'')+'</div></td>'
-    +'<td><button class="note-btn '+(ex.note?'has-note':'no-note')+'" title="Note">'+(ex.note?'📝':'✎')+'</button></td>'
-    +'<td><button class="del-btn">✕</button></td>';
-  const inputs=tr.querySelectorAll('.ex-in');
-  const wIn=inputs[0],rpeIn=inputs[1],tempoIn=inputs[2],setsIn=inputs[3],repsIn=inputs[4];
-  const wDisp=tr.querySelector('.wt-val'),wAlt=tr.querySelector('.wt-alt');
-  const acList=tr.querySelector('.ac-list');
+function makeExRow(ex,day,ei,container){
+  const card=document.createElement('div');
+  card.className='ex-card'+(ex.done?' ex-card-done':'');
+  card.dataset.exid=ex.id;
+
+  card.innerHTML=
+    // Row 1: drag + name + actions
+    '<div class="ex-row ex-row-header">'
+      +'<span class="drag-handle ex-drag">⠿</span>'
+      +'<div class="ac-wrap ex-name-wrap">'
+        +'<input class="ex-name-in" value="'+(ex.workout||'')+'" placeholder="Exercise name"/>'
+        +'<div class="ac-list"></div>'
+      +'</div>'
+      +'<div class="ex-actions">'
+        +'<div class="check-box'+(ex.done?' done':'')+'" style="width:24px;height:24px;font-size:12px">'+(ex.done?'✓':'')+'</div>'
+        +'<button class="note-btn '+(ex.note?'has-note':'no-note')+'">'+(ex.note?'📝':'✎')+'</button>'
+        +'<button class="del-btn">✕</button>'
+      +'</div>'
+    +'</div>'
+    // Row 2: metrics grid
+    +'<div class="ex-row ex-metrics">'
+      +'<div class="ex-metric">'
+        +'<div class="ex-metric-label">RPE</div>'
+        +'<input class="ex-metric-in" type="text" inputmode="decimal" value="'+(ex.rpe||'')+'" placeholder="—"/>'
+      +'</div>'
+      +'<div class="ex-metric">'
+        +'<div class="ex-metric-label">Tempo</div>'
+        +'<input class="ex-metric-in" type="text" inputmode="numeric" value="'+(ex.tempo||'')+'" placeholder="311" maxlength="3"/>'
+      +'</div>'
+      +'<div class="ex-metric">'
+        +'<div class="ex-metric-label">Sets</div>'
+        +'<input class="ex-metric-in" type="text" inputmode="numeric" value="'+(ex.sets||'')+'" placeholder="—"/>'
+      +'</div>'
+      +'<div class="ex-metric">'
+        +'<div class="ex-metric-label">Reps</div>'
+        +'<input class="ex-metric-in" type="text" inputmode="numeric" value="'+(ex.reps||'')+'" placeholder="—"/>'
+      +'</div>'
+      +'<div class="ex-metric ex-metric-weight">'
+        +'<div class="ex-metric-label">Weight</div>'
+        +'<div class="wt-val">—</div>'
+        +'<div class="wt-alt"></div>'
+      +'</div>'
+    +'</div>';
+
+  const wIn=card.querySelector('.ex-name-in');
+  const [rpeIn,tempoIn,setsIn,repsIn]=card.querySelectorAll('.ex-metric-in');
+  const wDisp=card.querySelector('.wt-val');
+  const wAlt=card.querySelector('.wt-alt');
+  const acList=card.querySelector('.ac-list');
   let acSel=-1;
 
   function refreshW(){
@@ -376,27 +393,31 @@ function makeExRow(ex,day,ei,tbody){
   setsIn.addEventListener('input',()=>ex.sets=setsIn.value);
   repsIn.addEventListener('input',()=>{ex.reps=repsIn.value;refreshW();});
 
-  tr.querySelector('.check-box').addEventListener('click',function(){
+  card.querySelector('.check-box').addEventListener('click',function(){
     ex.done=!ex.done;
     this.classList.toggle('done',ex.done);
     this.textContent=ex.done?'✓':'';
-    tr.classList.toggle('ex-done-row',ex.done);
+    card.classList.toggle('ex-card-done',ex.done);
     if(ex.done&&settings.timerAuto)startTimer(ex.workout);
     day.done=day.exercises.every(e=>e.done);
-    const dayCard=tr.closest('.day-card');
+    const dayCard=card.closest('.day-card');
     if(dayCard){
       const doneBtn=dayCard.querySelector('.day-header .check-box');
       const s=getDayDoneState(day);
       if(doneBtn){doneBtn.className='check-box'+(s==='done'?' done':s==='partial'?' partial':'');doneBtn.textContent=s==='done'?'✓':s==='partial'?'–':'';}
     }
   });
-  tr.querySelector('.note-btn').addEventListener('click',()=>openNote(ex,ex.workout||('Exercise '+(ei+1)),tr));
-  tr.querySelector('.del-btn').addEventListener('click',()=>{
+  card.querySelector('.note-btn').addEventListener('click',()=>openNote(ex,ex.workout||('Exercise '+(ei+1)),card));
+  card.querySelector('.del-btn').addEventListener('click',()=>{
     const idx=day.exercises.indexOf(ex);if(idx>=0)day.exercises.splice(idx,1);
-    tr.remove();tbody.querySelectorAll('tr').forEach((r,i)=>r.cells[1].textContent=i+1);
+    card.remove();
+    container.querySelectorAll('.ex-card').forEach((c,i)=>{
+      const drag=c.querySelector('.ex-drag');
+      // update number if needed
+    });
   });
   setTimeout(refreshW,0);
-  return tr;
+  return card;
 }
 
 // ═══════════════════════════════════════════════
