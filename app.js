@@ -1,4 +1,49 @@
 // ═══════════════════════════════════════════════
+// SUPABASE CONFIG
+// ═══════════════════════════════════════════════
+const SUPA_URL = 'https://qgweaaesbqzpsxvawxet.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnd2VhYWVzYnF6cHN4dmF3eGV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDkxOTMsImV4cCI6MjA5NzkyNTE5M30.F3w8uP92Bm1CTIaBCJR5ebbERX1QDz2N8XtZIwrHuWE';
+
+async function supaLoad() {
+  try {
+    const res = await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main&select=*', {
+      headers: {'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY}
+    });
+    const data = await res.json();
+    if (data && data[0]) {
+      if (data[0].blocks && data[0].blocks.length) blocks = data[0].blocks;
+      if (data[0].lifts && Object.keys(data[0].lifts).length) lifts = data[0].lifts;
+      if (data[0].settings && Object.keys(data[0].settings).length) settings = Object.assign({}, settings, data[0].settings);
+      console.log('Loaded from Supabase');
+      return true;
+    }
+  } catch(e) { console.warn('Supabase load failed, using localStorage', e); }
+  return false;
+}
+
+async function supaSave() {
+  try {
+    const res = await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main', {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer '+SUPA_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        blocks: blocks,
+        lifts: lifts,
+        settings: settings,
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (res.ok) { console.log('Saved to Supabase'); return true; }
+  } catch(e) { console.warn('Supabase save failed, using localStorage', e); }
+  return false;
+}
+
+// ═══════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════
 const KG2LB=2.2046;
@@ -111,6 +156,7 @@ function saveAll(){
   localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title').value||''}));
   localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
   localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
+  supaSave().then(ok=>{ if(!ok) console.warn('Cloud save failed'); });
 }
 
 function loadAll(){
@@ -804,10 +850,17 @@ window.addEventListener('DOMContentLoaded',()=>{
       .catch(()=>{});
   }
 
-  // Boot
-  loadAll();
+  // Boot — load from Supabase first, fallback to localStorage
+  loadAll(); // load localStorage first as fallback
   applySettings();
-  if(!blocks.length)blocks.push(makeBlock('My Program',0));
-  renderProgram();
-  renderStats();
+  showToast('Syncing…');
+  supaLoad().then(fromCloud => {
+    if(fromCloud) {
+      applySettings();
+    }
+    if(!blocks.length) blocks.push(makeBlock('My Program',0));
+    renderProgram();
+    renderStats();
+    showToast(fromCloud ? 'Synced ☁️' : 'Loaded locally');
+  });
 })();
