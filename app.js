@@ -236,35 +236,45 @@ function renderProgram(){
 
 function renderBlock(block,bi,curId){
   const wrap=document.createElement('div');wrap.className='block-wrap';wrap.dataset.bid=block.id;
+
+  // Header
   const hdr=document.createElement('div');hdr.className='block-header';
-  hdr.innerHTML=''
-    +'<div class="block-hdr-top">'
+  hdr.innerHTML=
+    '<div class="block-hdr-top">'
     +'<span class="drag-handle">⠿</span>'
-    +'<span class="block-dot '+block.color+'"></span>'
+    +'<span class="block-dot '+block.color+'" style="width:10px;height:10px"></span>'
     +'<input class="block-name-in" value="'+(block.name||'')+'" placeholder="Block name"/>'
+    +'<span style="font-size:10px;color:var(--text3);flex-shrink:0">'+block.weeks.length+' week'+(block.weeks.length!==1?'s':'')+'</span>'
     +'</div>'
     +'<div class="block-hdr-btns">'
-    +'<button class="pill-btn acc" data-a="add-week">+Week</button>'
-    +'<button class="pill-btn red" data-a="rem-week">−Week</button>'
-    +'<button class="pill-btn acc" data-a="copy">Copy</button>'
+    +'<button class="pill-btn acc" data-a="add-week">+ Week</button>'
+    +'<button class="pill-btn red" data-a="rem-week">− Week</button>'
+    +'<button class="pill-btn" data-a="copy">Copy</button>'
     +'<button class="pill-btn" data-a="archive">Archive</button>'
     +'<button class="pill-btn red" data-a="delete">Delete</button>'
     +'</div>';
   hdr.querySelector('.block-name-in').addEventListener('input',e=>block.name=e.target.value);
   hdr.querySelectorAll('[data-a]').forEach(btn=>btn.addEventListener('click',()=>blockAction(btn.dataset.a,block.id)));
   wrap.appendChild(hdr);
+
+  // Body (weeks container)
+  const body=document.createElement('div');body.className='block-body';
   const weeksWrap=document.createElement('div');weeksWrap.dataset.weeksOf=block.id;
   block.weeks.forEach((w,wi)=>weeksWrap.appendChild(renderWeek(w,block,wi,curId)));
-  wrap.appendChild(weeksWrap);
+  body.appendChild(weeksWrap);
+  wrap.appendChild(body);
   return wrap;
 }
 
 function renderWeek(week,block,wi,curId){
   const wrap=document.createElement('div');wrap.className='week-wrap';wrap.dataset.wid=week.id;
   const state=getWeekDoneState(week);
+  const doneDays=week.days.filter(d=>d.done).length;
+
   const hdr=document.createElement('div');hdr.className='week-header';
   hdr.innerHTML='<span class="drag-handle" style="font-size:12px">⠿</span>'
     +'<span class="week-lbl">Week '+(wi+1)+'</span>'
+    +'<span style="font-size:10px;color:var(--text3);flex:1">'+doneDays+'/'+week.days.length+' days</span>'
     +'<input type="date" class="week-date-in" value="'+(week.date||'')+'"/>'
     +'<button class="pill-btn acc" style="font-size:9px" data-a="add-day">+Day</button>'
     +'<button class="pill-btn red" style="font-size:9px" data-a="rem-day">−Day</button>'
@@ -273,7 +283,11 @@ function renderWeek(week,block,wi,curId){
   hdr.querySelector('.week-date-in').addEventListener('change',e=>week.date=e.target.value);
   hdr.querySelectorAll('[data-a]').forEach(el=>el.addEventListener('click',()=>weekAction(el.dataset.a,block,week,el)));
   wrap.appendChild(hdr);
-  week.days.forEach((d,di)=>wrap.appendChild(renderDay(d,block,week,di,curId)));
+
+  // Days container
+  const daysWrap=document.createElement('div');daysWrap.className='week-days';
+  week.days.forEach((d,di)=>daysWrap.appendChild(renderDay(d,block,week,di,curId)));
+  wrap.appendChild(daysWrap);
   return wrap;
 }
 
@@ -286,8 +300,12 @@ function renderDay(day,block,week,di,curId){
   hdr.innerHTML='<span class="drag-handle" style="font-size:12px">⠿</span>'
     +'<span class="day-lbl">'+day.name+'</span>'
     +'<input type="date" class="day-date-in" value="'+(day.date||'')+'" onclick="event.stopPropagation()"/>'
-    +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-day" onclick="event.stopPropagation()">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>';
-  hdr.addEventListener('click',()=>body.classList.toggle('open'));
+    +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-day" onclick="event.stopPropagation()">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>'
+    +'<span class="day-chevron">›</span>';
+  hdr.addEventListener('click',()=>{
+    const isOpen=body.classList.toggle('open');
+    card.classList.toggle('open-card',isOpen);
+  });
   hdr.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
   hdr.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
     e.stopPropagation();
@@ -298,6 +316,7 @@ function renderDay(day,block,week,di,curId){
   card.appendChild(hdr);
   const body=document.createElement('div');
   body.className='day-body'+(day.id===curId?' open':'');
+  if(day.id===curId)card.classList.add('open-card');
   const exList=document.createElement('div');exList.className='ex-list';
   day.exercises.forEach((ex,ei)=>exList.appendChild(makeExRow(ex,day,ei,exList)));
   body.appendChild(exList);
@@ -320,13 +339,17 @@ function attachDotListeners(dotsEl,ex,numSpan,card,day){
       // Update dots
       dotsEl.querySelectorAll('.set-dot').forEach((d,i)=>d.classList.toggle('set-dot-done',i<ex.setsCompleted));
       if(numSpan)numSpan.textContent=ex.setsCompleted+'/'+total;
+      // Start timer after each set EXCEPT the last one
+      if(ex.setsCompleted<total&&settings.timerAuto){
+        startTimer(ex.workout);
+      }
       // Auto-complete exercise when all sets done
       if(ex.setsCompleted>=total&&total>0){
         ex.done=true;
         const cb=card.querySelector('.check-box');
         if(cb){cb.classList.add('done');cb.textContent='✓';}
         card.classList.add('ex-card-done');
-        if(settings.timerAuto)startTimer(ex.workout);
+        // No timer on last set
         day.done=day.exercises.every(e=>e.done);
         const dayCard=card.closest('.day-card');
         if(dayCard){
