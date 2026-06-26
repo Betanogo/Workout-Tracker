@@ -9,12 +9,30 @@ async function supaLoad() {
     const res = await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main&select=*', {
       headers: {'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY}
     });
+    if(!res.ok) return false;
     const data = await res.json();
     if (data && data[0]) {
-      if (data[0].blocks && data[0].blocks.length) blocks = data[0].blocks;
-      if (data[0].lifts && Object.keys(data[0].lifts).length) lifts = data[0].lifts;
-      if (data[0].settings && Object.keys(data[0].settings).length) settings = Object.assign({}, settings, data[0].settings);
-      console.log('Loaded from Supabase');
+      // Only use cloud data if it has actual content
+      const cloudBlocks = data[0].blocks;
+      const cloudLifts = data[0].lifts;
+      const cloudSettings = data[0].settings;
+      const cloudUpdated = data[0].updated_at;
+
+      // Check if cloud data is newer or has more data than local
+      const localSaved = localStorage.getItem('tl_last_saved');
+      const cloudIsNewer = !localSaved || (cloudUpdated && new Date(cloudUpdated) > new Date(localSaved));
+
+      if(cloudBlocks && cloudBlocks.length && cloudIsNewer) blocks = cloudBlocks;
+      if(cloudLifts && Object.keys(cloudLifts||{}).length && cloudIsNewer) lifts = cloudLifts;
+      if(cloudSettings && Object.keys(cloudSettings||{}).length) settings = Object.assign({}, settings, cloudSettings);
+
+      // Ensure migration
+      blocks.forEach(b=>{
+        if(!b.id)b.id=uid();
+        (b.weeks||[]).forEach(w=>{if(!w.id)w.id=uid();(w.days||[]).forEach(d=>{if(!d.id)d.id=uid();(d.exercises||[]).forEach(e=>{if(!e.id)e.id=uid();if(e.note===undefined)e.note='';if(e.setsCompleted===undefined)e.setsCompleted=0;});});});
+      });
+
+      console.log('Loaded from Supabase, cloud newer:', cloudIsNewer);
       return true;
     }
   } catch(e) { console.warn('Supabase load failed, using localStorage', e); }
@@ -153,9 +171,11 @@ function applySettings(){
 // PERSISTENCE
 // ═══════════════════════════════════════════════
 function saveAll(){
+  const now = new Date().toISOString();
   localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title').value||''}));
   localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
   localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
+  localStorage.setItem('tl_last_saved', now);
   supaSave().then(ok=>{ if(!ok) console.warn('Cloud save failed'); });
 }
 
@@ -1078,17 +1098,15 @@ window.addEventListener('DOMContentLoaded',()=>{
       .catch(()=>{});
   }
 
-  // Boot — load from Supabase first, fallback to localStorage
-  loadAll(); // load localStorage first as fallback
+  // Boot — Supabase first, localStorage fallback, never overwrite with empty
+  loadAll(); // localStorage fallback
   applySettings();
-  showToast('Syncing…');
   supaLoad().then(fromCloud => {
-    if(fromCloud) {
-      applySettings();
-    }
+    if(fromCloud) applySettings();
+    // Only create default block if truly no data anywhere
     if(!blocks.length) blocks.push(makeBlock('My Program',0));
     renderProgram();
     renderStats();
-    showToast(fromCloud ? 'Synced ☁️' : 'Loaded locally');
+    if(fromCloud) showToast('Synced ☁️');
   });
 })();
