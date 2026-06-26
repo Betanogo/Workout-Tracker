@@ -351,6 +351,39 @@ function renderDay(day,block,week,di,curId){
     card.classList.toggle('open-card',isOpen);
   });
 
+  // Day header as drop target — open day and drop at end
+  card.addEventListener('dragover',e=>{
+    if(!e.dataTransfer.types.includes('text/plain'))return;
+    e.preventDefault();
+    card.classList.add('ex-day-over');
+    // Auto-open the day body
+    if(!body.classList.contains('open')){
+      body.classList.add('open');
+      card.classList.add('open-card');
+    }
+  });
+  card.addEventListener('dragleave',e=>{
+    if(!card.contains(e.relatedTarget))card.classList.remove('ex-day-over');
+  });
+  card.addEventListener('drop',e=>{
+    e.preventDefault();e.stopPropagation();
+    card.classList.remove('ex-day-over');
+    const fromId=e.dataTransfer.getData('text/plain');
+    if(!fromId)return;
+    if(e.target.closest('.ex-card'))return; // handled by ex card
+    let srcEx=null,srcDay=null;
+    blocks.forEach(b=>b.weeks.forEach(w=>w.days.forEach(d=>{
+      const found=d.exercises.find(x=>x.id===fromId);
+      if(found){srcEx=found;srcDay=d;}
+    })));
+    if(!srcEx||srcDay===day)return;
+    pushUndo();
+    srcDay.exercises=srcDay.exercises.filter(x=>x.id!==fromId);
+    day.exercises.push(srcEx);
+    renderProgram();
+    showToast('Moved to '+day.name);
+  });
+
   // Long press on drag handle → show move options
   let lpTimer=null;
   const dayDragH=dRow1.querySelector('.drag-handle');
@@ -419,6 +452,34 @@ function renderDay(day,block,week,di,curId){
   if(day.id===curId)card.classList.add('open-card');
   const exList=document.createElement('div');exList.className='ex-list';
   day.exercises.forEach((ex,ei)=>exList.appendChild(makeExRow(ex,day,ei,exList)));
+
+  // Make exList a drop zone for dropping at the end
+  exList.addEventListener('dragover',e=>{
+    e.preventDefault();e.stopPropagation();
+    exList.classList.add('ex-list-over');
+  });
+  exList.addEventListener('dragleave',e=>{
+    if(!exList.contains(e.relatedTarget))exList.classList.remove('ex-list-over');
+  });
+  exList.addEventListener('drop',e=>{
+    e.preventDefault();e.stopPropagation();
+    exList.classList.remove('ex-list-over');
+    const fromId=e.dataTransfer.getData('text/plain');
+    if(!fromId)return;
+    // Check if dropped on a card already (handled by card.drop)
+    if(e.target.closest('.ex-card'))return;
+    let srcEx=null,srcDay=null;
+    blocks.forEach(b=>b.weeks.forEach(w=>w.days.forEach(d=>{
+      const found=d.exercises.find(x=>x.id===fromId);
+      if(found){srcEx=found;srcDay=d;}
+    })));
+    if(!srcEx||srcDay===day&&day.exercises.indexOf(srcEx)===day.exercises.length-1)return;
+    pushUndo();
+    srcDay.exercises=srcDay.exercises.filter(x=>x.id!==fromId);
+    day.exercises.push(srcEx);
+    renderProgram();
+    showToast('Moved to '+day.name);
+  });
   body.appendChild(exList);
   const addBtn=document.createElement('button');addBtn.className='add-ex-btn';addBtn.textContent='+ Add exercise';
   addBtn.addEventListener('click',()=>{const ex=makeEx();day.exercises.push(ex);exList.appendChild(makeExRow(ex,day,day.exercises.length-1,exList));});
@@ -529,6 +590,51 @@ function makeExRow(ex,day,ei,container){
   const wAlt=card.querySelector('.wt-alt');
   const acList=card.querySelector('.ac-list');
   let acSel=-1;
+
+  // ── Exercise drag (reorder within day, or move to another day) ──
+  const exDragH=card.querySelector('.ex-drag');
+  if(exDragH){
+    exDragH.addEventListener('mousedown',()=>card.draggable=true);
+    exDragH.addEventListener('touchstart',()=>card.draggable=true,{passive:true});
+    card.addEventListener('dragstart',e=>{
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',ex.id);
+      setTimeout(()=>card.style.opacity='.3',0);
+    });
+    card.addEventListener('dragend',()=>{
+      card.draggable=false;
+      card.style.opacity='';
+      document.querySelectorAll('.ex-card.ex-drag-over').forEach(c=>c.classList.remove('ex-drag-over'));
+      document.querySelectorAll('.day-card.ex-day-over').forEach(c=>c.classList.remove('ex-day-over'));
+    });
+    card.addEventListener('dragover',e=>{
+      e.preventDefault();e.stopPropagation();
+      card.classList.add('ex-drag-over');
+    });
+    card.addEventListener('dragleave',()=>card.classList.remove('ex-drag-over'));
+    card.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();
+      card.classList.remove('ex-drag-over');
+      const fromId=e.dataTransfer.getData('text/plain');
+      if(!fromId||fromId===ex.id)return;
+      // Find source exercise and day
+      let srcEx=null,srcDay=null;
+      blocks.forEach(b=>b.weeks.forEach(w=>w.days.forEach(d=>{
+        const found=d.exercises.find(x=>x.id===fromId);
+        if(found){srcEx=found;srcDay=d;}
+      })));
+      if(!srcEx)return;
+      pushUndo();
+      // Remove from source
+      srcDay.exercises=srcDay.exercises.filter(x=>x.id!==fromId);
+      // Insert before target in current day
+      const targetIdx=day.exercises.indexOf(ex);
+      day.exercises.splice(targetIdx,0,srcEx);
+      renderProgram();
+    });
+    card.draggable=false;
+  }
 
   function refreshW(){
     const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
