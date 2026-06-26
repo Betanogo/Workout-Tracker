@@ -91,7 +91,7 @@ let _id=Date.now();
 const uid=()=>'i'+(++_id);
 const toDisplay=kg=>displayUnit==='kg'?kg:kg*KG2LB;
 const toKg=v=>displayUnit==='kg'?v:v/KG2LB;
-const fmt=(kg,d=1)=>kg==null||isNaN(kg)?'—':toDisplay(kg).toFixed(d)+' '+displayUnit;
+const fmt=(kg,d=0)=>kg==null||isNaN(kg)?'—':Math.round(toDisplay(kg))+' '+displayUnit;
 const parseAsKg=v=>{const n=parseFloat(v);return isNaN(n)?null:toKg(n);};
 
 function rpeFactor(rpe,reps){const r=RPE_SCALE[parseFloat(rpe)];if(!r)return null;return r[Math.min(parseInt(reps)-1,9)];}
@@ -186,7 +186,7 @@ function loadAll(){
 // ═══════════════════════════════════════════════
 // DEFAULT STRUCTURES
 // ═══════════════════════════════════════════════
-const makeEx=()=>({id:uid(),workout:'',rpe:'',tempo:'',sets:'',reps:'',done:false,note:''});
+const makeEx=()=>({id:uid(),workout:'',rpe:'',tempo:'',sets:'',reps:'',done:false,note:'',setsCompleted:0});
 const makeDay=name=>({id:uid(),name:name||'Day 1',date:'',done:false,media:[],exercises:[0,1,2,3,4].map(makeEx)});
 const makeWeek=n=>({id:uid(),label:'Week '+n,date:'',done:false,days:DAY_NAMES.map(makeDay)});
 const makeBlock=(name,ci)=>({id:uid(),name:name||'New Block',color:BLOCK_COLS[ci%BLOCK_COLS.length],archived:false,weeks:[makeWeek(1)]});
@@ -308,6 +308,43 @@ function renderDay(day,block,week,di,curId){
   return card;
 }
 
+function attachDotListeners(dotsEl,ex,numSpan,card,day){
+  dotsEl.querySelectorAll('.set-dot').forEach(dot=>{
+    dot.addEventListener('click',()=>{
+      const idx=parseInt(dot.dataset.idx);
+      const cur=ex.setsCompleted||0;
+      // Toggle: clicking last done dot undoes it, else advances
+      if(idx===cur-1){ex.setsCompleted=cur-1;}
+      else{ex.setsCompleted=idx+1;}
+      const total=parseInt(ex.sets)||0;
+      // Update dots
+      dotsEl.querySelectorAll('.set-dot').forEach((d,i)=>d.classList.toggle('set-dot-done',i<ex.setsCompleted));
+      if(numSpan)numSpan.textContent=ex.setsCompleted+'/'+total;
+      // Auto-complete exercise when all sets done
+      if(ex.setsCompleted>=total&&total>0){
+        ex.done=true;
+        const cb=card.querySelector('.check-box');
+        if(cb){cb.classList.add('done');cb.textContent='✓';}
+        card.classList.add('ex-card-done');
+        if(settings.timerAuto)startTimer(ex.workout);
+        day.done=day.exercises.every(e=>e.done);
+        const dayCard=card.closest('.day-card');
+        if(dayCard){
+          const doneBtn=dayCard.querySelector('.day-header .check-box');
+          const s=getDayDoneState(day);
+          if(doneBtn){doneBtn.className='check-box'+(s==='done'?' done':s==='partial'?' partial':'');doneBtn.textContent=s==='done'?'✓':s==='partial'?'–':'';}
+        }
+      } else if(ex.setsCompleted<(parseInt(ex.sets)||0)){
+        // Un-complete if sets reduced
+        ex.done=false;
+        const cb=card.querySelector('.check-box');
+        if(cb){cb.classList.remove('done');cb.textContent='';}
+        card.classList.remove('ex-card-done');
+      }
+    });
+  });
+}
+
 function makeExRow(ex,day,ei,container){
   const card=document.createElement('div');
   card.className='ex-card'+(ex.done?' ex-card-done':'');
@@ -339,7 +376,7 @@ function makeExRow(ex,day,ei,container){
       +'</div>'
       +'<div class="ex-metric">'
         +'<div class="ex-metric-label">Sets</div>'
-        +'<input class="ex-metric-in" type="text" inputmode="numeric" value="'+(ex.sets||'')+'" placeholder="—"/>'
+        +'<input class="ex-metric-in ex-sets-in" type="text" inputmode="numeric" value="'+(ex.sets||'')+'" placeholder="—"/>'
       +'</div>'
       +'<div class="ex-metric">'
         +'<div class="ex-metric-label">Reps</div>'
@@ -350,6 +387,14 @@ function makeExRow(ex,day,ei,container){
         +'<div class="wt-val">—</div>'
         +'<div class="wt-alt"></div>'
       +'</div>'
+    +'</div>'
+    // Row 3: set counter (shown when sets > 1)
+    +'<div class="ex-set-counter" style="display:'+(ex.sets&&parseInt(ex.sets)>1?'flex':'none')+'">'
+      +'<span class="set-counter-label">Set</span>'
+      +'<div class="set-dots" data-sets="'+(ex.sets||0)+'" data-done="'+(ex.setsCompleted||0)+'">'
+        +Array.from({length:Math.min(parseInt(ex.sets)||0,12)},(_,i)=>'<div class="set-dot'+(i<(ex.setsCompleted||0)?' set-dot-done':'')+'" data-idx="'+i+'"></div>').join('')
+      +'</div>'
+      +'<span class="set-counter-num">'+(ex.setsCompleted||0)+'/'+(ex.sets||0)+'</span>'
     +'</div>';
 
   const wIn=card.querySelector('.ex-name-in');
@@ -361,7 +406,7 @@ function makeExRow(ex,day,ei,container){
 
   function refreshW(){
     const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
-    if(kg){wDisp.textContent=fmt(kg,1);wAlt.textContent=displayUnit==='kg'?(kg*KG2LB).toFixed(1)+' lb':(kg/KG2LB).toFixed(1)+' kg';}
+    if(kg){wDisp.textContent=fmt(kg,0);wAlt.textContent=displayUnit==='kg'?Math.round(kg*KG2LB)+' lb':Math.round(kg/KG2LB)+' kg';}
     else{wDisp.textContent='—';wAlt.textContent='';}
   }
 
@@ -390,7 +435,25 @@ function makeExRow(ex,day,ei,container){
   wIn.addEventListener('blur',()=>setTimeout(()=>acList.style.display='none',150));
   rpeIn.addEventListener('input',()=>{ex.rpe=rpeIn.value;refreshW();});
   tempoIn.addEventListener('input',()=>{ex.tempo=tempoIn.value;refreshW();});
-  setsIn.addEventListener('input',()=>ex.sets=setsIn.value);
+  setsIn.addEventListener('input',()=>{
+    ex.sets=setsIn.value;
+    const n=parseInt(ex.sets)||0;
+    const counter=card.querySelector('.ex-set-counter');
+    const dots=card.querySelector('.set-dots');
+    const numSpan=card.querySelector('.set-counter-num');
+    if(counter){counter.style.display=n>1?'flex':'none';}
+    if(dots&&n>1){
+      dots.dataset.sets=n;
+      dots.innerHTML=Array.from({length:Math.min(n,12)},(_,i)=>'<div class="set-dot'+(i<(ex.setsCompleted||0)?' set-dot-done':'')+'" data-idx="'+i+'"></div>').join('');
+      attachDotListeners(dots,ex,numSpan,card,day);
+    }
+    if(numSpan)numSpan.textContent=(ex.setsCompleted||0)+'/'+n;
+  });
+
+  // Attach dot listeners
+  const dotsEl=card.querySelector('.set-dots');
+  const numSpanEl=card.querySelector('.set-counter-num');
+  if(dotsEl)attachDotListeners(dotsEl,ex,numSpanEl,card,day);
   repsIn.addEventListener('input',()=>{ex.reps=repsIn.value;refreshW();});
 
   card.querySelector('.check-box').addEventListener('click',function(){
@@ -713,6 +776,118 @@ function backupToExcel(){
 }
 
 // ═══════════════════════════════════════════════
+// CALENDAR
+// ═══════════════════════════════════════════════
+let calYear=new Date().getFullYear();
+let calMonth=new Date().getMonth();
+let calSelected=null;
+
+function getWorkedOutDates(){
+  // Returns a map of 'YYYY-MM-DD' -> [{blockName, dayName, exercises}]
+  const map={};
+  blocks.forEach(block=>{
+    block.weeks.forEach(week=>{
+      week.days.forEach(day=>{
+        if(day.date){
+          const key=day.date; // already YYYY-MM-DD
+          if(!map[key])map[key]=[];
+          map[key].push({blockName:block.name,weekLabel:week.label,dayName:day.name,exercises:day.exercises,done:day.done});
+        }
+        // Also check if day is done and has no date — skip
+      });
+    });
+  });
+  return map;
+}
+
+function renderCalendar(){
+  const grid=document.getElementById('cal-grid');
+  const label=document.getElementById('cal-month-label');
+  if(!grid||!label)return;
+
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  label.textContent=months[calMonth]+' '+calYear;
+
+  const workedDates=getWorkedOutDates();
+  const today=new Date();
+  const todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const daysInPrev=new Date(calYear,calMonth,0).getDate();
+
+  let html='<div class="cal-weekdays">';
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d=>html+='<div class="cal-weekday">'+d+'</div>');
+  html+='</div><div class="cal-days">';
+
+  // Prev month days
+  for(let i=firstDay-1;i>=0;i--){
+    html+='<div class="cal-day other-month"><span class="cal-day-num">'+(daysInPrev-i)+'</span></div>';
+  }
+  // Current month
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const isToday=dateStr===todayStr;
+    const isWorked=!!workedDates[dateStr];
+    const isSelected=dateStr===calSelected;
+    let cls='cal-day';
+    if(isToday)cls+=' today';
+    if(isWorked)cls+=' worked-out';
+    if(isSelected)cls+=' selected';
+    html+='<div class="'+cls+'" data-date="'+dateStr+'">'
+      +'<span class="cal-day-num">'+d+'</span>'
+      +(isWorked&&!isSelected?'<div class="cal-day-dot"></div>':'')
+      +'</div>';
+  }
+  // Next month days
+  const remaining=(7-((firstDay+daysInMonth)%7))%7;
+  for(let d=1;d<=remaining;d++){
+    html+='<div class="cal-day other-month"><span class="cal-day-num">'+d+'</span></div>';
+  }
+  html+='</div>';
+  grid.innerHTML=html;
+
+  // Click listeners
+  grid.querySelectorAll('.cal-day[data-date]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      calSelected=el.dataset.date;
+      renderCalendar();
+      showCalDetail(el.dataset.date,workedDates[el.dataset.date]);
+    });
+  });
+}
+
+function showCalDetail(dateStr,entries){
+  const detail=document.getElementById('cal-detail');
+  const title=document.getElementById('cal-detail-title');
+  const content=document.getElementById('cal-detail-content');
+  if(!detail||!title||!content)return;
+
+  // Format date nicely
+  const d=new Date(dateStr+'T12:00:00');
+  title.textContent=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
+
+  if(!entries||!entries.length){
+    content.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No workout logged for this day.<br><span style="font-size:11px">Add a date to a Day in your program to track it here.</span></div>';
+  } else {
+    content.innerHTML=entries.map(e=>{
+      const exDone=e.exercises.filter(ex=>ex.done);
+      return '<div style="margin-bottom:10px">'
+        +'<div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:4px">'+e.blockName+' — '+e.dayName+'</div>'
+        +e.exercises.filter(ex=>ex.workout).map(ex=>
+          '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">'
+          +'<span style="font-size:10px;color:'+(ex.done?'var(--acc)':'var(--text3)')+'">'+( ex.done?'✓':'○')+'</span>'
+          +'<span style="font-size:12px;color:var(--text);flex:1">'+ex.workout+'</span>'
+          +'<span style="font-family:var(--fm);font-size:10px;color:var(--text3)">'+[ex.sets&&ex.reps?ex.sets+'×'+ex.reps:'',ex.rpe?'@'+ex.rpe:''].filter(Boolean).join(' ')+'</span>'
+          +'</div>'
+        ).join('')
+        +'</div>';
+    }).join('');
+  }
+  detail.classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════
 // INIT — runs after DOM is ready
 // ═══════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
@@ -806,6 +981,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-backup').addEventListener('click',backupToExcel);
   document.getElementById('btn-reset-all').addEventListener('click',()=>confirmAction('Reset ALL data?','Cannot be undone.',()=>{localStorage.clear();location.reload();}));
 
+  // Calendar controls
+  const calPrev=document.getElementById('cal-prev');
+  const calNext=document.getElementById('cal-next');
+  const calClose=document.getElementById('cal-detail-close');
+  if(calPrev)calPrev.addEventListener('click',()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();});
+  if(calNext)calNext.addEventListener('click',()=>{calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCalendar();});
+  if(calClose)calClose.addEventListener('click',()=>{calSelected=null;document.getElementById('cal-detail').classList.add('hidden');renderCalendar();});
+
   // Nav tabs
   document.querySelectorAll('.nav-tab').forEach(tab=>{
     tab.addEventListener('click',()=>{
@@ -816,6 +999,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       if(tab.dataset.page==='stats')renderStats();
       if(tab.dataset.page==='rpe'){renderRPETable();updateCalc();}
       if(tab.dataset.page==='log')renderLog();
+      if(tab.dataset.page==='calendar')renderCalendar();
     });
   });
   document.getElementById('btn-settings').addEventListener('click',()=>{

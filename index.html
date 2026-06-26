@@ -276,6 +276,30 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 .wt-val{font-family:var(--fm);font-size:13px;font-weight:700;color:var(--acc);text-align:center;}
 .wt-alt{font-size:9px;color:var(--text3);text-align:center;margin-top:1px;}
 
+/* ── CALENDAR ── */
+.cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;}
+.cal-weekday{text-align:center;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:4px 0;}
+.cal-days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-day{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:background .15s;}
+.cal-day:hover{background:var(--s3);}
+.cal-day.other-month{opacity:.25;}
+.cal-day.today{border:1px solid var(--acc);}
+.cal-day.worked-out{background:var(--acc-dim);}
+.cal-day.worked-out .cal-day-num{color:var(--acc);font-weight:700;}
+.cal-day.selected{background:var(--acc);} 
+.cal-day.selected .cal-day-num{color:var(--acc-text);}
+.cal-day-num{font-family:var(--fm);font-size:12px;color:var(--text2);}
+.cal-day-dot{width:4px;height:4px;border-radius:50%;background:var(--acc);margin-top:2px;}
+
+/* ── SET COUNTER ── */
+.ex-set-counter{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--border);background:var(--s1);}
+.set-counter-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);flex-shrink:0;}
+.set-dots{display:flex;gap:5px;flex:1;flex-wrap:wrap;}
+.set-dot{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--s3);cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;}
+.set-dot:hover{border-color:var(--acc);}
+.set-dot-done{background:var(--acc);border-color:var(--acc);}
+.set-counter-num{font-family:var(--fm);font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0;}
+
 /* Block colors */
 .bc0{background:#e06c00}.bc1{background:#00b4a0}.bc2{background:#9b6dff}.bc3{background:#e06060}.bc4{background:#60a0e0}.bc5{background:#7ec87e}
 </style>
@@ -293,6 +317,7 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
       <button class="nav-tab" data-page="stats">Stats</button>
       <button class="nav-tab" data-page="rpe">RPE</button>
       <button class="nav-tab" data-page="log">Log</button>
+      <button class="nav-tab" data-page="calendar">Cal</button>
     </div>
     <button class="nav-icon-btn" id="btn-settings" title="Settings">⚙</button>
   </div>
@@ -357,6 +382,24 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
     <button class="pill-btn red" id="btn-clear-log">Clear all</button>
   </div>
   <div id="log-list"></div>
+</div>
+
+<!-- CALENDAR -->
+<div class="page" id="page-calendar">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <button class="circle-btn" id="cal-prev">‹</button>
+    <div id="cal-month-label" style="font-family:var(--fm);font-size:14px;font-weight:700;color:var(--text)"></div>
+    <button class="circle-btn" id="cal-next">›</button>
+  </div>
+  <div id="cal-grid"></div>
+  <!-- Day detail sheet -->
+  <div id="cal-detail" class="hidden" style="margin-top:12px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div id="cal-detail-title" style="font-size:14px;font-weight:600;color:var(--text)"></div>
+      <button class="del-btn" id="cal-detail-close">✕</button>
+    </div>
+    <div id="cal-detail-content"></div>
+  </div>
 </div>
 
 <!-- SETTINGS -->
