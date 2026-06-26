@@ -100,6 +100,23 @@ let activeNote=null;
 let timerInterval=null;
 let timerRemaining=0;
 let timerTotal=0;
+let undoStack=[]; // stores snapshots of blocks
+const MAX_UNDO=20;
+
+function pushUndo(){
+  undoStack.push(JSON.stringify(blocks));
+  if(undoStack.length>MAX_UNDO)undoStack.shift();
+  const btn=document.getElementById('btn-undo');
+  if(btn)btn.style.opacity='1';
+}
+
+function undo(){
+  if(!undoStack.length){showToast('Nothing to undo');return;}
+  blocks=JSON.parse(undoStack.pop());
+  if(!undoStack.length){const btn=document.getElementById('btn-undo');if(btn)btn.style.opacity='.3';}
+  renderProgram();
+  showToast('Undo ✓');
+}
 let exNames=new Set(['Squat','Bench Press','Deadlift','OHP','Belt Squat','Larson Bench Press','Romanian Deadlift','Single Leg RDL','Copenhagen Plank','Ab Wheel','Cable Crunch','Cable Tricep Extension','Side Lateral Raise','Rear Delt Fly','Machine Press','Sandbag Bear Hug Carry','Back Extension','BSS','Pause Squat','Close Grip Bench','Incline Bench','Leg Press','Hip Thrust','Good Morning','Face Pull','Tricep Pushdown','Bicep Curl','Pause Deadlift','Deficit Deadlift','Box Squat','Front Squat','SQ','BP','DL']);
 
 // ═══════════════════════════════════════════════
@@ -543,8 +560,8 @@ function makeExRow(ex,day,ei,container){
 // ═══════════════════════════════════════════════
 function blockAction(action,bid){
   const block=blocks.find(b=>b.id===bid);if(!block)return;
-  if(action==='add-week'){block.weeks.push(makeWeek(block.weeks.length+1));renderProgram();}
-  else if(action==='rem-week'){if(block.weeks.length>1){block.weeks.pop();renderProgram();}}
+  if(action==='add-week'){pushUndo();block.weeks.push(makeWeek(block.weeks.length+1));renderProgram();}
+  else if(action==='rem-week'){if(block.weeks.length>1){pushUndo();block.weeks.pop();renderProgram();}}
   else if(action==='copy'){
     const c=JSON.parse(JSON.stringify(block));
     c.id=uid();c.name=block.name+' (copy)';c.color=BLOCK_COLS[(BLOCK_COLS.indexOf(block.color)+1)%BLOCK_COLS.length];
@@ -552,16 +569,16 @@ function blockAction(action,bid){
     const idx=blocks.indexOf(block);blocks.splice(idx+1,0,c);renderProgram();showToast('Copied');
   }
   else if(action==='archive'){
-    confirmAction('Archive "'+block.name+'"?','Moves to Log.',()=>{block.archived=true;archiveToLog(block);renderProgram();renderLog();showToast('Archived');});
+    confirmAction('Archive "'+block.name+'"?','Moves to Log.',()=>{pushUndo();block.archived=true;archiveToLog(block);renderProgram();renderLog();showToast('Archived');});
   }
   else if(action==='delete'){
-    confirmAction('Delete "'+block.name+'"?','Cannot be undone.',()=>{blocks=blocks.filter(b=>b.id!==bid);renderProgram();showToast('Deleted');});
+    confirmAction('Delete "'+block.name+'"?','Cannot be undone.',()=>{pushUndo();blocks=blocks.filter(b=>b.id!==bid);renderProgram();showToast('Deleted');});
   }
 }
 
 function weekAction(action,block,week,el){
-  if(action==='add-day'){week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();}
-  else if(action==='rem-day'){if(week.days.length>1){week.days.pop();renderProgram();}}
+  if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();}
+  else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();}}
   else if(action==='del-week'){
     confirmAction('Delete week?','All exercises will be removed.',()=>{block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Week deleted');});
   }
@@ -1095,6 +1112,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
   document.getElementById('btn-clear-log').addEventListener('click',()=>confirmAction('Clear all logs?','Cannot be undone.',()=>{localStorage.removeItem(LOG_KEY);renderLog();}));
   ['c1rm','crpe','creps'].forEach(id=>document.getElementById(id).addEventListener('input',updateCalc));
+  document.getElementById('btn-undo').addEventListener('click',()=>undo());
   document.getElementById('fab').addEventListener('click',()=>{
     blocks.forEach(b=>b.weeks.forEach(w=>w.days.forEach(d=>d.exercises.forEach(e=>{if(e.workout)exNames.add(e.workout);}))));
     saveAll();showToast('Saved ✓');
