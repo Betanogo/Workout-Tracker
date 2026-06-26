@@ -351,46 +351,58 @@ function renderDay(day,block,week,di,curId){
     card.classList.toggle('open-card',isOpen);
   });
 
-  // Long press on day label → move to next week
+  // Long press on drag handle → show move options
   let lpTimer=null;
-  const dayLblEl=hdr.querySelector('.day-lbl');
-  if(dayLblEl){
+  const dayDragH=dRow1.querySelector('.drag-handle');
+  if(dayDragH){
     const lpStart=(e)=>{
+      e.preventDefault();
       e.stopPropagation();
       lpTimer=setTimeout(()=>{
+        // Find current week index
         const allBlocks=blocks.filter(b=>!b.archived);
         for(const blk of allBlocks){
           for(let wi=0;wi<blk.weeks.length;wi++){
             const wk=blk.weeks[wi];
             const di=wk.days.indexOf(day);
             if(di>=0){
+              // Show choice: prev week or next week
+              const canPrev=wi>0;
+              const canNext=true;
+              const choice=canPrev
+                ? confirm('Move "'+day.name+'" to next week? (Cancel = previous week)')
+                : true;
               pushUndo();
               wk.days.splice(di,1);
-              if(wi+1<blk.weeks.length){
-                blk.weeks[wi+1].days.push(day);
+              if(choice){
+                // Move to next week
+                if(wi+1<blk.weeks.length){
+                  blk.weeks[wi+1].days.unshift(day);
+                } else {
+                  const nw=makeWeek(blk.weeks.length+1);
+                  nw.days=[day];
+                  blk.weeks.push(nw);
+                }
+                showToast('📅 Moved to Week '+(wi+2));
               } else {
-                const nw=makeWeek(blk.weeks.length+1);
-                nw.days=[day];
-                blk.weeks.push(nw);
+                // Move to prev week
+                blk.weeks[wi-1].days.push(day);
+                showToast('📅 Moved to Week '+wi);
               }
               renderProgram();
-              showToast('📅 Moved to Week '+(wi+2));
               return;
             }
           }
         }
-        showToast('Week not found');
       },700);
     };
     const lpCancel=()=>clearTimeout(lpTimer);
-    dayLblEl.addEventListener('mousedown',lpStart);
-    dayLblEl.addEventListener('touchstart',lpStart,{passive:true});
-    dayLblEl.addEventListener('mouseup',lpCancel);
-    dayLblEl.addEventListener('mouseleave',lpCancel);
-    dayLblEl.addEventListener('touchend',lpCancel);
-    dayLblEl.addEventListener('touchmove',lpCancel,{passive:true});
-    dayLblEl.style.cursor='pointer';
-    dayLblEl.title='Long press to move to next week';
+    dayDragH.addEventListener('mousedown',lpStart);
+    dayDragH.addEventListener('touchstart',lpStart,{passive:false});
+    dayDragH.addEventListener('mouseup',lpCancel);
+    dayDragH.addEventListener('mouseleave',lpCancel);
+    dayDragH.addEventListener('touchend',lpCancel);
+    dayDragH.addEventListener('touchmove',lpCancel,{passive:true});
   }
   dRow2.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
   dRow2.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
@@ -654,12 +666,34 @@ function makeSortable(container,itemSel,handleSel,onDrop){
   let dragging=null;
   container.querySelectorAll(itemSel).forEach(item=>{
     const handle=item.querySelector(handleSel);if(!handle)return;
-    item.draggable=true;
-    item.addEventListener('dragstart',e=>{dragging=item;e.dataTransfer.effectAllowed='move';setTimeout(()=>item.style.opacity='.3',0);});
-    item.addEventListener('dragend',()=>{dragging=null;item.style.opacity='';container.querySelectorAll(itemSel).forEach(i=>i.classList.remove('drag-over'));});
-    item.addEventListener('dragover',e=>{e.preventDefault();if(dragging&&dragging!==item)item.classList.add('drag-over');});
+    // Only allow drag from handle
+    handle.addEventListener('mousedown',()=>{item.draggable=true;});
+    handle.addEventListener('touchstart',()=>{item.draggable=true;},{passive:true});
+    item.addEventListener('dragstart',e=>{
+      if(!item.draggable)return;
+      dragging=item;
+      e.dataTransfer.effectAllowed='move';
+      e.stopPropagation();
+      setTimeout(()=>item.style.opacity='.3',0);
+    });
+    item.addEventListener('dragend',()=>{
+      dragging=null;
+      item.draggable=false;
+      item.style.opacity='';
+      container.querySelectorAll(itemSel).forEach(i=>i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover',e=>{
+      e.preventDefault();e.stopPropagation();
+      if(dragging&&dragging!==item)item.classList.add('drag-over');
+    });
     item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
-    item.addEventListener('drop',e=>{e.preventDefault();item.classList.remove('drag-over');if(dragging&&dragging!==item)onDrop(dragging,item);});
+    item.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();
+      item.classList.remove('drag-over');
+      if(dragging&&dragging!==item)onDrop(dragging,item);
+    });
+    // Start with draggable false
+    item.draggable=false;
   });
 }
 
