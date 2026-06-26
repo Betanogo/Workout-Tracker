@@ -292,14 +292,18 @@ function renderWeek(week,block,wi,curId){
   const doneDays=week.days.filter(d=>d.done).length;
 
   const hdr=document.createElement('div');hdr.className='week-header';
-  hdr.innerHTML='<span class="drag-handle" style="font-size:12px">⠿</span>'
+  const wState=state;
+  const wRow1=document.createElement('div');wRow1.className='week-hdr-top';
+  wRow1.innerHTML='<span class="drag-handle">⠿</span>'
     +'<span class="week-lbl">Week '+(wi+1)+'</span>'
     +'<span style="font-size:10px;color:var(--text3);flex:1">'+doneDays+'/'+week.days.length+' days</span>'
-    +'<input type="date" class="week-date-in" value="'+(week.date||'')+'"/>'
-    +'<button class="pill-btn acc" style="font-size:9px" data-a="add-day">+Day</button>'
-    +'<button class="pill-btn red" style="font-size:9px" data-a="rem-day">−Day</button>'
-    +'<button class="pill-btn red" style="font-size:9px" data-a="del-week">✕</button>'
-    +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-week">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>';
+    +'<div class="check-box'+(wState==='done'?' done':wState==='partial'?' partial':'')+'" data-a="toggle-week">'+(wState==='done'?'✓':wState==='partial'?'–':'')+'</div>';
+  const wRow2=document.createElement('div');wRow2.className='week-hdr-btns';
+  wRow2.innerHTML='<input type="date" class="week-date-in" value="'+(week.date||'')+'" style="background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--text2);font-family:var(--fm);font-size:10px;outline:none;"/>'
+    +'<button class="pill-btn acc" data-a="add-day">+Day</button>'
+    +'<button class="pill-btn red" data-a="rem-day">−Day</button>'
+    +'<button class="pill-btn red" data-a="del-week">✕</button>';
+  hdr.appendChild(wRow1);hdr.appendChild(wRow2);
   hdr.querySelector('.week-date-in').addEventListener('change',e=>week.date=e.target.value);
   hdr.querySelectorAll('[data-a]').forEach(el=>el.addEventListener('click',()=>weekAction(el.dataset.a,block,week,el)));
   wrap.appendChild(hdr);
@@ -317,17 +321,22 @@ function renderDay(day,block,week,di,curId){
   card.dataset.did=day.id;
   const state=getDayDoneState(day);
   const hdr=document.createElement('div');hdr.className='day-header';
-  hdr.innerHTML='<span class="drag-handle" style="font-size:12px">⠿</span>'
+  const dRow1=document.createElement('div');dRow1.className='day-hdr-row1';
+  dRow1.innerHTML='<span class="drag-handle">⠿</span>'
     +'<span class="day-lbl">'+day.name+'</span>'
-    +'<input type="date" class="day-date-in" value="'+(day.date||'')+'" onclick="event.stopPropagation()"/>'
-    +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-day" onclick="event.stopPropagation()">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>'
     +'<span class="day-chevron">›</span>';
+  const dRow2=document.createElement('div');dRow2.className='day-hdr-row2';
+  const doneLabel=state==='done'?'Done':state==='partial'?'In progress':'Not started';
+  dRow2.innerHTML='<input type="date" class="day-date-in" value="'+(day.date||'')+'" onclick="event.stopPropagation()"/>'
+    +'<span class="day-done-label">'+doneLabel+'</span>'
+    +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-day" onclick="event.stopPropagation()">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>';
+  hdr.appendChild(dRow1);hdr.appendChild(dRow2);
   hdr.addEventListener('click',()=>{
     const isOpen=body.classList.toggle('open');
     card.classList.toggle('open-card',isOpen);
   });
-  hdr.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
-  hdr.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
+  dRow2.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
+  dRow2.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
     e.stopPropagation();
     day.done=!day.done;
     markDayExercises(day,day.done);
@@ -393,9 +402,11 @@ function makeExRow(ex,day,ei,container){
   card.className='ex-card'+(ex.done?' ex-card-done':'');
   card.dataset.exid=ex.id;
 
+  const numSets=parseInt(ex.sets)||0;
+  const setDotsHtml=numSets>1?Array.from({length:Math.min(numSets,12)},(_,i)=>'<div class="set-dot'+(i<(ex.setsCompleted||0)?' set-dot-done':'')+'" data-idx="'+i+'"></div>').join(''):'';
   card.innerHTML=
     // Row 1: drag + name + actions
-    '<div class="ex-row ex-row-header">'
+    '<div class="ex-row-header">'
       +'<span class="drag-handle ex-drag">⠿</span>'
       +'<div class="ac-wrap ex-name-wrap">'
         +'<input class="ex-name-in" value="'+(ex.workout||'')+'" placeholder="Exercise name"/>'
@@ -407,8 +418,8 @@ function makeExRow(ex,day,ei,container){
         +'<button class="del-btn">✕</button>'
       +'</div>'
     +'</div>'
-    // Row 2: metrics grid
-    +'<div class="ex-row ex-metrics">'
+    // Row 2: 4-col metrics grid (RPE Tempo Sets Reps)
+    +'<div class="ex-metrics">'
       +'<div class="ex-metric">'
         +'<div class="ex-metric-label">RPE</div>'
         +'<input class="ex-metric-in" type="text" inputmode="decimal" value="'+(ex.rpe||'')+'" placeholder="—"/>'
@@ -425,17 +436,18 @@ function makeExRow(ex,day,ei,container){
         +'<div class="ex-metric-label">Reps</div>'
         +'<input class="ex-metric-in" type="text" inputmode="numeric" value="'+(ex.reps||'')+'" placeholder="—"/>'
       +'</div>'
-      +'<div class="ex-metric ex-metric-weight">'
-        +'<div class="ex-metric-label">Weight</div>'
-        +'<div class="wt-val">—</div>'
-        +'<div class="wt-alt"></div>'
-      +'</div>'
     +'</div>'
-    // Row 3: set counter (shown when sets > 1)
-    +'<div class="ex-set-counter" style="display:'+(ex.sets&&parseInt(ex.sets)>1?'flex':'none')+'">'
+    // Row 3: weight full-width bar
+    +'<div class="ex-weight-row">'
+      +'<span style="font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">WEIGHT</span>'
+      +'<div class="wt-val">—</div>'
+      +'<div class="wt-alt"></div>'
+    +'</div>'
+    // Row 4: set counter
+    +'<div class="ex-set-counter" style="display:'+(numSets>1?'flex':'none')+'">'
       +'<span class="set-counter-label">Set</span>'
       +'<div class="set-dots" data-sets="'+(ex.sets||0)+'" data-done="'+(ex.setsCompleted||0)+'">'
-        +Array.from({length:Math.min(parseInt(ex.sets)||0,12)},(_,i)=>'<div class="set-dot'+(i<(ex.setsCompleted||0)?' set-dot-done':'')+'" data-idx="'+i+'"></div>').join('')
+        +setDotsHtml
       +'</div>'
       +'<span class="set-counter-num">'+(ex.setsCompleted||0)+'/'+(ex.sets||0)+'</span>'
     +'</div>';
