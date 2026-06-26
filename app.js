@@ -316,12 +316,10 @@ function renderWeek(week,block,wi,curId){
     +'<span style="font-size:10px;color:var(--text3);flex:1">'+doneDays+'/'+week.days.length+' days</span>'
     +'<div class="check-box'+(wState==='done'?' done':wState==='partial'?' partial':'')+'" data-a="toggle-week">'+(wState==='done'?'✓':wState==='partial'?'–':'')+'</div>';
   const wRow2=document.createElement('div');wRow2.className='week-hdr-btns';
-  wRow2.innerHTML='<input type="date" class="week-date-in" value="'+(week.date||'')+'" style="background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--text2);font-family:var(--fm);font-size:10px;outline:none;"/>'
-    +'<button class="pill-btn acc" data-a="add-day">+Day</button>'
+  wRow2.innerHTML='<button class="pill-btn acc" data-a="add-day">+Day</button>'
     +'<button class="pill-btn red" data-a="rem-day">−Day</button>'
     +'<button class="pill-btn red" data-a="del-week">✕</button>';
   hdr.appendChild(wRow1);hdr.appendChild(wRow2);
-  hdr.querySelector('.week-date-in').addEventListener('change',e=>week.date=e.target.value);
   hdr.querySelectorAll('[data-a]').forEach(el=>el.addEventListener('click',()=>weekAction(el.dataset.a,block,week,el)));
   wrap.appendChild(hdr);
 
@@ -352,6 +350,45 @@ function renderDay(day,block,week,di,curId){
     const isOpen=body.classList.toggle('open');
     card.classList.toggle('open-card',isOpen);
   });
+
+  // Long press on drag handle → move to next week
+  let longPressTimer=null;
+  const dragH=hdr.querySelector('.drag-handle');
+  if(dragH){
+    const startLong=()=>{
+      longPressTimer=setTimeout(()=>{
+        // Find which week this day belongs to and move to next
+        const allBlocks=blocks.filter(b=>!b.archived);
+        for(const blk of allBlocks){
+          for(let wi=0;wi<blk.weeks.length;wi++){
+            const wk=blk.weeks[wi];
+            const di=wk.days.indexOf(day);
+            if(di>=0){
+              pushUndo();
+              wk.days.splice(di,1);
+              // Add to next week, or create new week
+              if(wi+1<blk.weeks.length){
+                blk.weeks[wi+1].days.push(day);
+              } else {
+                const nw=makeWeek(blk.weeks.length+1);
+                nw.days=[day];
+                blk.weeks.push(nw);
+              }
+              renderProgram();
+              showToast('Moved to Week '+(wi+2));
+              return;
+            }
+          }
+        }
+      },600);
+    };
+    const cancelLong=()=>clearTimeout(longPressTimer);
+    dragH.addEventListener('mousedown',startLong);
+    dragH.addEventListener('touchstart',startLong,{passive:true});
+    dragH.addEventListener('mouseup',cancelLong);
+    dragH.addEventListener('mouseleave',cancelLong);
+    dragH.addEventListener('touchend',cancelLong);
+  }
   dRow2.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
   dRow2.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
     e.stopPropagation();
@@ -544,6 +581,7 @@ function makeExRow(ex,day,ei,container){
   });
   card.querySelector('.note-btn').addEventListener('click',()=>openNote(ex,ex.workout||('Exercise '+(ei+1)),card));
   card.querySelector('.del-btn').addEventListener('click',()=>{
+    pushUndo();
     const idx=day.exercises.indexOf(ex);if(idx>=0)day.exercises.splice(idx,1);
     card.remove();
     container.querySelectorAll('.ex-card').forEach((c,i)=>{
@@ -580,7 +618,7 @@ function weekAction(action,block,week,el){
   if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();}
   else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();}}
   else if(action==='del-week'){
-    confirmAction('Delete week?','All exercises will be removed.',()=>{block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Week deleted');});
+    confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Week deleted');});
   }
   else if(action==='toggle-week'){week.done=!week.done;markWeekDays(week,week.done);renderProgram();}
 }
@@ -855,17 +893,18 @@ let calMonth=new Date().getMonth();
 let calSelected=null;
 
 function getWorkedOutDates(){
-  // Returns a map of 'YYYY-MM-DD' -> [{blockName, dayName, exercises}]
   const map={};
   blocks.forEach(block=>{
     block.weeks.forEach(week=>{
       week.days.forEach(day=>{
-        if(day.date){
-          const key=day.date; // already YYYY-MM-DD
-          if(!map[key])map[key]=[];
-          map[key].push({blockName:block.name,weekLabel:week.label,dayName:day.name,exercises:day.exercises,done:day.done});
+        // Show day if it has a date AND at least one exercise is done
+        if(day.date && day.exercises.some(e=>e.done)){
+          if(!map[day.date])map[day.date]=[];
+          map[day.date].push({
+            blockName:block.name,weekLabel:week.label,dayName:day.name,
+            exercises:day.exercises,done:day.done
+          });
         }
-        // Also check if day is done and has no date — skip
       });
     });
   });
@@ -932,27 +971,33 @@ function renderCalendar(){
 function showCalDetail(dateStr,entries){
   const detail=document.getElementById('cal-detail');
   const title=document.getElementById('cal-detail-title');
-  const content=document.getElementById('cal-detail-content');
-  if(!detail||!title||!content)return;
-
-  // Format date nicely
+  const detailContent=document.getElementById('cal-detail-content');
+  if(!detail||!title||!detailContent)return;
   const d=new Date(dateStr+'T12:00:00');
   title.textContent=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
-
   if(!entries||!entries.length){
-    content.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No workout logged for this day.<br><span style="font-size:11px">Add a date to a Day in your program to track it here.</span></div>';
+    detailContent.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No completed workouts for this day.<br><span style="font-size:11px;opacity:.7">Mark exercises as done and add a date to the Day card.</span></div>';
   } else {
-    content.innerHTML=entries.map(e=>{
-      const exDone=e.exercises.filter(ex=>ex.done);
-      return '<div style="margin-bottom:10px">'
-        +'<div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:4px">'+e.blockName+' — '+e.dayName+'</div>'
-        +e.exercises.filter(ex=>ex.workout).map(ex=>
-          '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">'
-          +'<span style="font-size:10px;color:'+(ex.done?'var(--acc)':'var(--text3)')+'">'+( ex.done?'✓':'○')+'</span>'
-          +'<span style="font-size:12px;color:var(--text);flex:1">'+ex.workout+'</span>'
-          +'<span style="font-family:var(--fm);font-size:10px;color:var(--text3)">'+[ex.sets&&ex.reps?ex.sets+'×'+ex.reps:'',ex.rpe?'@'+ex.rpe:''].filter(Boolean).join(' ')+'</span>'
-          +'</div>'
-        ).join('')
+    detailContent.innerHTML=entries.map(e=>{
+      const doneEx=e.exercises.filter(ex=>ex.done&&ex.workout);
+      const totalEx=e.exercises.filter(ex=>ex.workout).length;
+      return '<div style="margin-bottom:12px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+          +'<div style="font-size:12px;color:var(--acc);font-weight:700">'+e.dayName+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'+e.blockName+'</div>'
+          +'<div style="margin-left:auto;font-family:var(--fm);font-size:10px;color:var(--text3)">'+doneEx.length+'/'+totalEx+' done</div>'
+        +'</div>'
+        +e.exercises.filter(ex=>ex.workout).map(ex=>{
+          const wt=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+            +'<div style="width:20px;height:20px;border-radius:4px;background:'+(ex.done?'var(--acc)':'var(--s3)')+';border:1px solid '+(ex.done?'var(--acc)':'var(--border)')+';display:flex;align-items:center;justify-content:center;font-size:10px;color:'+(ex.done?'var(--acc-text)':'transparent')+';flex-shrink:0">'+(ex.done?'✓':'')+'</div>'
+            +'<div style="flex:1;min-width:0">'
+              +'<div style="font-size:12px;color:'+(ex.done?'var(--text)':'var(--text3)')+';font-weight:500">'+ex.workout+'</div>'
+              +(ex.sets&&ex.reps?'<div style="font-family:var(--fm);font-size:10px;color:var(--text3)">'+ex.sets+'×'+ex.reps+(ex.rpe?' @RPE'+ex.rpe:'')+'</div>':'')
+            +'</div>'
+            +(wt?'<div style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--acc);flex-shrink:0">'+Math.round(toDisplay(wt))+' '+displayUnit+'</div>':'')
+          +'</div>';
+        }).join('')
         +'</div>';
     }).join('');
   }
