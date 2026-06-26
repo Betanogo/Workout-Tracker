@@ -806,7 +806,7 @@ function makeSortable(container,itemSel,handleSel,onDrop){
 // ═══════════════════════════════════════════════
 // TIMER
 // ═══════════════════════════════════════════════
-const circumference=2*Math.PI*68;
+const circumference=2*Math.PI*90;
 (()=>{
   const tc=document.getElementById('timer-circle');
   if(tc)tc.style.strokeDasharray=circumference;
@@ -1328,5 +1328,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderProgram();
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
+  // Dismiss loading screen
+  setTimeout(()=>{
+    const ls=document.getElementById('loading-screen');
+    if(ls)ls.classList.add('hide');
+    setTimeout(()=>{if(ls)ls.remove();},600);
+  },1400);
   });
 })();
