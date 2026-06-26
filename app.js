@@ -351,13 +351,13 @@ function renderDay(day,block,week,di,curId){
     card.classList.toggle('open-card',isOpen);
   });
 
-  // Long press on drag handle → move to next week
-  let longPressTimer=null;
-  const dragH=hdr.querySelector('.drag-handle');
-  if(dragH){
-    const startLong=()=>{
-      longPressTimer=setTimeout(()=>{
-        // Find which week this day belongs to and move to next
+  // Long press on day label → move to next week
+  let lpTimer=null;
+  const dayLblEl=hdr.querySelector('.day-lbl');
+  if(dayLblEl){
+    const lpStart=(e)=>{
+      e.stopPropagation();
+      lpTimer=setTimeout(()=>{
         const allBlocks=blocks.filter(b=>!b.archived);
         for(const blk of allBlocks){
           for(let wi=0;wi<blk.weeks.length;wi++){
@@ -366,7 +366,6 @@ function renderDay(day,block,week,di,curId){
             if(di>=0){
               pushUndo();
               wk.days.splice(di,1);
-              // Add to next week, or create new week
               if(wi+1<blk.weeks.length){
                 blk.weeks[wi+1].days.push(day);
               } else {
@@ -375,19 +374,23 @@ function renderDay(day,block,week,di,curId){
                 blk.weeks.push(nw);
               }
               renderProgram();
-              showToast('Moved to Week '+(wi+2));
+              showToast('📅 Moved to Week '+(wi+2));
               return;
             }
           }
         }
-      },600);
+        showToast('Week not found');
+      },700);
     };
-    const cancelLong=()=>clearTimeout(longPressTimer);
-    dragH.addEventListener('mousedown',startLong);
-    dragH.addEventListener('touchstart',startLong,{passive:true});
-    dragH.addEventListener('mouseup',cancelLong);
-    dragH.addEventListener('mouseleave',cancelLong);
-    dragH.addEventListener('touchend',cancelLong);
+    const lpCancel=()=>clearTimeout(lpTimer);
+    dayLblEl.addEventListener('mousedown',lpStart);
+    dayLblEl.addEventListener('touchstart',lpStart,{passive:true});
+    dayLblEl.addEventListener('mouseup',lpCancel);
+    dayLblEl.addEventListener('mouseleave',lpCancel);
+    dayLblEl.addEventListener('touchend',lpCancel);
+    dayLblEl.addEventListener('touchmove',lpCancel,{passive:true});
+    dayLblEl.style.cursor='pointer';
+    dayLblEl.title='Long press to move to next week';
   }
   dRow2.querySelector('.day-date-in').addEventListener('change',e=>day.date=e.target.value);
   dRow2.querySelector('[data-a="toggle-day"]').addEventListener('click',function(e){
@@ -397,6 +400,8 @@ function renderDay(day,block,week,di,curId){
     renderProgram();
   });
   card.appendChild(hdr);
+  // Prevent day card from being accidentally draggable
+  card.draggable=false;
   const body=document.createElement('div');
   body.className='day-body'+(day.id===curId?' open':'');
   if(day.id===curId)card.classList.add('open-card');
