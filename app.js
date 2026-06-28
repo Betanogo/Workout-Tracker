@@ -1357,7 +1357,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
   setTimeout(()=>autoBackup(),3000);
-  // Loading screen video
+  // Loading screen video — wait for it to fully end
   const ls=document.getElementById('loading-screen');
   const vidH=document.getElementById('load-vid-h');
   const vidV=document.getElementById('load-vid-v');
@@ -1365,10 +1365,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     const isMobile=window.innerWidth<=768||/Mobi|Android/i.test(navigator.userAgent);
     const vid=isMobile?vidV:vidH;
     vid.classList.add('active');
-    vid.play().catch(()=>{});
     const dismiss=()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);};
     vid.addEventListener('ended',dismiss);
-    setTimeout(dismiss,5000);
+    // Fallback only if video fails to load
+    vid.addEventListener('error',()=>setTimeout(dismiss,500));
+    vid.play().catch(()=>setTimeout(dismiss,500));
+  } else if(ls){
+    // No video elements — just dismiss
+    setTimeout(()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);},500);
   }
   // Dismiss loading screen
   setTimeout(()=>{
