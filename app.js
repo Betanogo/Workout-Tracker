@@ -1331,8 +1331,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   // Dismiss loading screen
   setTimeout(()=>{
     const ls=document.getElementById('loading-screen');
-    if(ls)ls.classList.add('hide');
-    setTimeout(()=>{if(ls)ls.remove();},600);
-  },1400);
+    if(ls){
+      ls.classList.add('hide');
+      setTimeout(()=>{if(ls)ls.style.display='none';},700);
+    }
+  },1500);
   });
 })();
