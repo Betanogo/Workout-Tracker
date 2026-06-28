@@ -1328,33 +1328,5 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderProgram();
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
-  // Show correct video based on screen size, dismiss after video
-  const ls=document.getElementById('loading-screen');
-  const vidH=document.getElementById('load-vid-h');
-  const vidV=document.getElementById('load-vid-v');
-  if(ls&&vidH&&vidV){
-    const isMobile=window.innerWidth<=768||/Mobi|Android/i.test(navigator.userAgent);
-    if(isMobile){
-      vidV.classList.add('active');
-      vidV.play().catch(()=>{});
-    } else {
-      vidH.classList.add('active');
-      vidH.play().catch(()=>{});
-    }
-    // Dismiss after video duration or max 4 seconds
-    const vid=isMobile?vidV:vidH;
-    vid.addEventListener('loadedmetadata',()=>{
-      const dur=Math.min(vid.duration*1000||3000,4000);
-      setTimeout(()=>{
-        ls.classList.add('hide');
-        setTimeout(()=>ls.style.display='none',600);
-      },dur);
-    });
-    // Fallback if video doesn't load
-    setTimeout(()=>{
-      ls.classList.add('hide');
-      setTimeout(()=>ls.style.display='none',600);
-    },4500);
-  }
   });
 })();

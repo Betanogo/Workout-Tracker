@@ -39,16 +39,6 @@
 html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;-webkit-font-smoothing:antialiased;}
 
 /* ── SCROLLBAR ── */
-/* ── LOADING SCREEN ── */
-#loading-screen{
-  position:fixed;inset:0;background:#000;
-  z-index:1000;display:flex;align-items:center;justify-content:center;
-  transition:opacity .5s ease;
-}
-#loading-screen.hide{opacity:0;pointer-events:none;}
-.load-video{width:100%;height:100%;object-fit:cover;display:none;}
-.load-video.active{display:block;}
-
 ::-webkit-scrollbar{width:3px;height:3px;}
 ::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px;}
 
@@ -398,12 +388,6 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 </div>
 
 <!-- FAB -->
-<!-- LOADING SCREEN -->
-<div id="loading-screen">
-  <video class="load-video" id="load-vid-h" src="Logo%20animation_Horizontal.mp4" playsinline muted autoplay></video>
-  <video class="load-video" id="load-vid-v" src="Logo%20animation_Vertical.mp4" playsinline muted autoplay></video>
-</div>
-
 <button id="fab">Save ↑</button>
 <div id="toast"></div>
 
@@ -721,5 +705,6 @@ if(!blocks.length)blocks.push(makeBlock('My Program',0));
 renderProgram();
 renderStats();
 </script>
+<script src="app.js"></script>
 </body>
 </html>
