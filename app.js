@@ -1358,7 +1358,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
   setTimeout(()=>autoBackup(),3000);
-  // Loading screen video — wait for it to fully end
+  // Loading screen video
   const ls=document.getElementById('loading-screen');
   const vidH=document.getElementById('load-vid-h');
   const vidV=document.getElementById('load-vid-v');
@@ -1368,11 +1368,9 @@ window.addEventListener('DOMContentLoaded',()=>{
     vid.classList.add('active');
     const dismiss=()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);};
     vid.addEventListener('ended',dismiss);
-    // Fallback only if video fails to load
-    vid.addEventListener('error',()=>setTimeout(dismiss,500));
-    vid.play().catch(()=>setTimeout(dismiss,500));
+    vid.addEventListener('error',dismiss);
+    vid.play().catch(dismiss);
   } else if(ls){
-    // No video elements — just dismiss
     setTimeout(()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);},500);
   }
   // Dismiss loading screen

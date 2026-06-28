@@ -352,6 +352,7 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
   transition:opacity .5s ease;
 }
 #loading-screen.hide{opacity:0;pointer-events:none;}
+@keyframes tapPulse{0%,100%{opacity:.4}50%{opacity:1;}}
 .load-video{
   width:100%;height:100%;
   object-fit:cover;
@@ -588,8 +589,12 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
-  <video class="load-video" id="load-vid-h" src="LogoAnimation_Horizontal.mp4" playsinline muted></video>
-  <video class="load-video" id="load-vid-v" src="LogoAnimation_Vertical.mp4" playsinline muted></video>
+  <video class="load-video" id="load-vid-h" src="LogoAnimation_Horizontal.mp4" playsinline muted autoplay></video>
+  <video class="load-video" id="load-vid-v" src="LogoAnimation_Vertical.mp4" playsinline muted autoplay></video>
+  <div id="load-tap" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;">
+    <img src="V3_White.png" style="width:200px;height:auto;margin-bottom:32px;"/>
+    <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,0.4);animation:tapPulse 1.5s ease-in-out infinite;">Tap to continue</div>
+  </div>
 </div>
   <div class="tl-tagline">Powerlifting Tracker</div>
   <div class="tl-bar"><div class="tl-bar-fill"></div></div>
