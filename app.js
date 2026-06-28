@@ -520,6 +520,7 @@ function attachDotListeners(dotsEl,ex,numSpan,card,day){
     dot.addEventListener('click',()=>{
       const idx=parseInt(dot.dataset.idx);
       const cur=ex.setsCompleted||0;
+      const prevCompleted=cur;
       // Toggle: clicking last done dot undoes it, else advances
       if(idx===cur-1){ex.setsCompleted=cur-1;}
       else{ex.setsCompleted=idx+1;}
@@ -527,8 +528,8 @@ function attachDotListeners(dotsEl,ex,numSpan,card,day){
       // Update dots
       dotsEl.querySelectorAll('.set-dot').forEach((d,i)=>d.classList.toggle('set-dot-done',i<ex.setsCompleted));
       if(numSpan)numSpan.textContent=ex.setsCompleted+'/'+total;
-      // Start timer after each set EXCEPT the last one
-      if(ex.setsCompleted<total&&settings.timerAuto){
+      // Start timer after each set EXCEPT the last one, only when going forward
+      if(ex.setsCompleted<total&&ex.setsCompleted>prevCompleted&&settings.timerAuto){
         startTimer(ex.workout);
       }
       // Auto-complete exercise when all sets done
@@ -721,7 +722,7 @@ function makeExRow(ex,day,ei,container){
     this.classList.toggle('done',ex.done);
     this.textContent=ex.done?'✓':'';
     card.classList.toggle('ex-card-done',ex.done);
-    if(ex.done&&!wasDone&&!wasDone&&settings.timerAuto)startTimer(ex.workout);
+    if(ex.done&&!wasDone&&settings.timerAuto)startTimer(ex.workout);
     day.done=day.exercises.every(e=>e.done);
     const dayCard=card.closest('.day-card');
     if(dayCard){
