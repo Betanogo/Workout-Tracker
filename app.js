@@ -62,6 +62,33 @@ async function supaSave() {
 }
 
 // ═══════════════════════════════════════════════
+// AUTO BACKUP TO SUPABASE (daily)
+// ═══════════════════════════════════════════════
+const AUTO_BACKUP_KEY='tl_last_auto_backup';
+
+async function autoBackup(){
+  const last=localStorage.getItem(AUTO_BACKUP_KEY);
+  if(last&&new Date(last).toDateString()===new Date().toDateString())return;
+  if(!blocks.length)return;
+  try{
+    const res=await fetch(SUPA_URL+'/rest/v1/tatelift_backups',{
+      method:'POST',
+      headers:{
+        'apikey':SUPA_KEY,
+        'Authorization':'Bearer '+SUPA_KEY,
+        'Content-Type':'application/json',
+        'Prefer':'return=minimal'
+      },
+      body:JSON.stringify({blocks,lifts,backed_up_at:new Date().toISOString()})
+    });
+    if(res.ok){
+      localStorage.setItem(AUTO_BACKUP_KEY,new Date().toISOString());
+      console.log('Auto backup saved to Supabase');
+    }
+  }catch(e){console.warn('Auto backup failed:',e);}
+}
+
+// ═══════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════
 const KG2LB=2.2046;
@@ -1328,6 +1355,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderProgram();
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
+  setTimeout(()=>autoBackup(),3000);
   // Dismiss loading screen
   setTimeout(()=>{
     const ls=document.getElementById('loading-screen');
