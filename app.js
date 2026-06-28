@@ -716,11 +716,12 @@ function makeExRow(ex,day,ei,container){
   repsIn.addEventListener('input',()=>{ex.reps=repsIn.value;refreshW();});
 
   card.querySelector('.check-box').addEventListener('click',function(){
+    const wasDone=ex.done;
     ex.done=!ex.done;
     this.classList.toggle('done',ex.done);
     this.textContent=ex.done?'✓':'';
     card.classList.toggle('ex-card-done',ex.done);
-    if(ex.done&&settings.timerAuto)startTimer(ex.workout);
+    if(ex.done&&!wasDone&&!wasDone&&settings.timerAuto)startTimer(ex.workout);
     day.done=day.exercises.every(e=>e.done);
     const dayCard=card.closest('.day-card');
     if(dayCard){
@@ -1356,6 +1357,19 @@ window.addEventListener('DOMContentLoaded',()=>{
     renderStats();
     if(fromCloud) showToast('Synced ☁️');
   setTimeout(()=>autoBackup(),3000);
+  // Loading screen video
+  const ls=document.getElementById('loading-screen');
+  const vidH=document.getElementById('load-vid-h');
+  const vidV=document.getElementById('load-vid-v');
+  if(ls&&vidH&&vidV){
+    const isMobile=window.innerWidth<=768||/Mobi|Android/i.test(navigator.userAgent);
+    const vid=isMobile?vidV:vidH;
+    vid.classList.add('active');
+    vid.play().catch(()=>{});
+    const dismiss=()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);};
+    vid.addEventListener('ended',dismiss);
+    setTimeout(dismiss,5000);
+  }
   // Dismiss loading screen
   setTimeout(()=>{
     const ls=document.getElementById('loading-screen');

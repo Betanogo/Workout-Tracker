@@ -347,40 +347,17 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 
 /* ── LOADING SCREEN ── */
 #loading-screen{
-  position:fixed;inset:0;background:var(--bg);
-  z-index:1000;display:flex;align-items:center;justify-content:center;
-  flex-direction:column;
-  transition:opacity .5s ease, visibility .5s ease;
+  position:fixed;inset:0;background:#000;
+  z-index:1000;
+  transition:opacity .5s ease;
 }
-#loading-screen.hide{opacity:0;visibility:hidden;pointer-events:none;}
-.tl-logo-anim{display:flex;align-items:center;gap:0;overflow:hidden;}
-.tl-char{
-  font-family:var(--fm);font-size:52px;font-weight:700;
-  color:var(--text);letter-spacing:-0.02em;
-  opacity:0;transform:translateY(40px);
-  animation:charIn .5s cubic-bezier(0.16,1,0.3,1) forwards;
+#loading-screen.hide{opacity:0;pointer-events:none;}
+.load-video{
+  width:100%;height:100%;
+  object-fit:cover;
+  display:none;
 }
-.tl-char.acc{color:var(--acc);}
-@keyframes charIn{
-  to{opacity:1;transform:translateY(0);}
-}
-.tl-tagline{
-  font-family:var(--fm);font-size:11px;font-weight:400;
-  letter-spacing:.25em;text-transform:uppercase;color:var(--text3);
-  margin-top:16px;
-  opacity:0;animation:fadeIn .4s ease .9s forwards;
-}
-.tl-bar{
-  width:120px;height:2px;background:var(--s3);border-radius:1px;
-  margin-top:24px;overflow:hidden;
-  opacity:0;animation:fadeIn .3s ease 1s forwards;
-}
-.tl-bar-fill{
-  height:100%;width:0%;background:var(--acc);border-radius:1px;
-  animation:barLoad 1.2s cubic-bezier(0.16,1,0.3,1) 1s forwards;
-}
-@keyframes barLoad{to{width:100%;}}
-@keyframes fadeIn{to{opacity:1;}}
+.load-video.active{display:block;}
 </style>
 </head>
 <body>
@@ -611,16 +588,9 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
-  <div class="tl-logo-anim">
-    <span class="tl-char acc" style="animation-delay:.0s">T</span>
-    <span class="tl-char" style="animation-delay:.07s">A</span>
-    <span class="tl-char" style="animation-delay:.14s">T</span>
-    <span class="tl-char acc" style="animation-delay:.21s">E</span>
-    <span class="tl-char" style="animation-delay:.28s">L</span>
-    <span class="tl-char" style="animation-delay:.35s">I</span>
-    <span class="tl-char" style="animation-delay:.42s">F</span>
-    <span class="tl-char" style="animation-delay:.49s">T</span>
-  </div>
+  <video class="load-video" id="load-vid-h" src="LogoAnimation_Horizontal.mp4" playsinline muted></video>
+  <video class="load-video" id="load-vid-v" src="LogoAnimation_Vertical.mp4" playsinline muted></video>
+</div>
   <div class="tl-tagline">Powerlifting Tracker</div>
   <div class="tl-bar"><div class="tl-bar-fill"></div></div>
 </div>
