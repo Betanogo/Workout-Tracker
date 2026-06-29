@@ -642,7 +642,7 @@ function renderLog(){
         +'</div>'
         +'<div style="margin-bottom:8px">'
           +days.map(d=>'<div style="padding:6px 0;border-bottom:1px solid var(--border)">'
-            +'<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px">'+d.dayName+(d.date?' <span style='font-size:10px;color:var(--text3);font-family:var(--fm)'>'+d.date+'</span>':'')+'</div>'
+            +'<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px">'+d.dayName+(d.date?' <span style="font-size:10px;color:var(--text3);font-family:var(--fm)">'+d.date+'</span>':'')+'</div>'
             +'<div style="display:flex;flex-wrap:wrap;gap:3px">'
               +d.exercises.filter(e=>e.workout).map(e=>'<span class="log-chip">'+(e.done?'✓ ':'')+e.workout+(e.sets&&e.reps?' '+e.sets+'×'+e.reps:'')+'</span>').join('')
             +'</div>'
