@@ -425,6 +425,7 @@ function renderWeek(week,block,wi,curId){
     +'<div class="wk-btns">'
       +'<button class="pb sm" data-a="add-day">+Day</button>'
       +'<button class="pb sm" data-a="rem-day">−Day</button>'
+      +'<button class="pb sm" data-a="archive-week">Archive</button>'
       +'<button class="pb sm red" data-a="del-week">✕</button>'
       +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-week">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>'
     +'</div>';
@@ -584,6 +585,16 @@ function weekAction(action,block,week,el){
   else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();}}
   else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Deleted');});}
   else if(action==='toggle-week'){pushUndo();week.done=!week.done;markWeekDays(week,week.done);renderProgram();}
+  else if(action==='archive-week'){
+    confirmAction('Archive "'+week.label+'"?','All days will move to Log.',()=>{
+      pushUndo();
+      // Archive all days to log grouped by this week
+      week.days.forEach(day=>archiveDayToLog(day,block,week));
+      // Remove week from block
+      block.weeks=block.weeks.filter(w=>w.id!==week.id);
+      renderProgram();renderLog();showToast(week.label+' archived');
+    });
+  }
 }
 
 // ── Log ───────────────────────────────────────
@@ -757,12 +768,23 @@ function updateCalc(){
 let calYear=new Date().getFullYear(),calMonth=new Date().getMonth(),calSelected=null;
 function getWorkedOutDates(){
   const map={};
+  // From active blocks
   blocks.forEach(block=>{block.weeks.forEach(week=>{week.days.forEach(day=>{
     if(day.date&&day.exercises.some(e=>e.done)){
       if(!map[day.date])map[day.date]=[];
       map[day.date].push({blockName:block.name,weekLabel:week.label,dayName:day.name,exercises:day.exercises});
     }
   });});});
+  // From archived log (day-group entries)
+  let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
+  log.filter(e=>e.type==='day-group').forEach(entry=>{
+    (entry.days||[]).forEach(day=>{
+      if(day.date&&(day.exercises||[]).some(e=>e.done)){
+        if(!map[day.date])map[day.date]=[];
+        map[day.date].push({blockName:entry.blockName,weekLabel:entry.weekLabel,dayName:day.dayName,exercises:day.exercises});
+      }
+    });
+  });
   return map;
 }
 function renderCalendar(){
@@ -1000,7 +1022,23 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('bw-input')?.addEventListener('input',e=>lifts.bw=parseAsKg(e.target.value));
   document.getElementById('btn-add-block')?.addEventListener('click',()=>{pushUndo();blocks.push(makeBlock('New Block',blocks.length));renderProgram();showToast('Block added');});
   document.getElementById('btn-import-nav')?.addEventListener('click',()=>document.getElementById('btn-import')?.click());
-  document.getElementById('btn-clear-log')?.addEventListener('click',()=>confirmAction('Clear all?','Cannot be undone.',()=>{localStorage.removeItem(LOG_KEY);renderLog();}));
+  document.getElementById('btn-log-menu')?.addEventListener('click',e=>{
+    e.stopPropagation();
+    document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
+    const menu=document.createElement('div');menu.className='day-ctx-menu';
+    const item=document.createElement('div');item.className='ctx-item red';
+    item.textContent='Clear all archived';
+    item.addEventListener('click',()=>{
+      menu.remove();
+      confirmAction('Clear all archived?','Cannot be undone.',()=>{localStorage.removeItem(LOG_KEY);renderLog();showToast('Cleared');});
+    });
+    menu.appendChild(item);
+    document.body.appendChild(menu);
+    const rect=e.target.getBoundingClientRect();
+    menu.style.top=(rect.bottom+6)+'px';
+    menu.style.right=(window.innerWidth-rect.right)+'px';
+    setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);
+  });
   ['c1rm','crpe','creps'].forEach(id=>document.getElementById(id)?.addEventListener('input',updateCalc));
   document.getElementById('btn-undo')?.addEventListener('click',undo);
   document.getElementById('fab')?.addEventListener('click',()=>{saveAll();showToast('Saved ✓');});
