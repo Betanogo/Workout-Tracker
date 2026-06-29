@@ -198,7 +198,6 @@ const makeBlock=(name,ci)=>({id:uid(),name:name||'New Block',color:BLOCK_COLS[ci
 function markDayExercises(day,done){day.exercises.forEach(e=>e.done=done);}
 function markWeekDays(week,done){week.days.forEach(d=>{d.done=done;markDayExercises(d,done);});}
 function getDayState(day){
-  if(day.archived)return'archived';
   if(!day.exercises.length)return'none';
   if(day.exercises.every(e=>e.done))return'done';
   if(day.exercises.some(e=>e.done))return'partial';
@@ -523,11 +522,15 @@ function openDayMenu(day,block,week,btn){
   document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
   const menu=document.createElement('div');menu.className='day-ctx-menu';
   const items=[
-    {label:day.archived?'Unarchive':'Archive',action:()=>{
-      pushUndo();day.archived=!day.archived;
-      if(day.archived)day.done=false;
+    {label:'Archive Day',action:()=>{
+      pushUndo();
+      // Archive day to log
+      archiveDayToLog(day,block,week);
+      // Remove from week
+      week.days=week.days.filter(d=>d.id!==day.id);
       renderProgram();
-      showToast(day.archived?'Day archived':'Day restored');
+      renderLog();
+      showToast('Day archived to Log');
     }},
     {label:'Move to next week',action:()=>{
       for(const blk of blocks.filter(b=>!b.archived)){
@@ -584,6 +587,36 @@ function weekAction(action,block,week,el){
 }
 
 // ── Log ───────────────────────────────────────
+function archiveDayToLog(day,block,week){
+  let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
+  // Group by block+week — find existing entry
+  const groupKey=block.id+'_'+week.id;
+  const existing=log.find(e=>e.type==='day-group'&&e.groupKey===groupKey);
+  const dayEntry={
+    id:day.id,
+    dayName:day.name,
+    date:day.date||'',
+    exercises:day.exercises,
+    archivedAt:new Date().toLocaleString('ko-KR'),
+  };
+  if(existing){
+    existing.days=existing.days||[];
+    existing.days.push(dayEntry);
+    existing.archivedAt=new Date().toLocaleString('ko-KR');
+  } else {
+    log.unshift({
+      type:'day-group',
+      groupKey,
+      blockName:block.name,
+      weekLabel:week.label,
+      id:uid(),
+      archivedAt:new Date().toLocaleString('ko-KR'),
+      days:[dayEntry],
+    });
+  }
+  localStorage.setItem(LOG_KEY,JSON.stringify(log.slice(0,200)));
+}
+
 function archiveToLog(block){
   let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
   log.unshift({id:block.id,name:block.name,archivedAt:new Date().toLocaleString('ko-KR'),
@@ -595,16 +628,39 @@ function archiveToLog(block){
 function renderLog(){
   const list=document.getElementById('log-list');if(!list)return;
   let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
-  if(!log.length){list.innerHTML='<div style="text-align:center;color:var(--text3);padding:50px 0;font-size:12px">No archived blocks yet</div>';return;}
+  if(!log.length){list.innerHTML='<div style="text-align:center;color:var(--text3);padding:50px 0;font-size:12px">No archived items yet</div>';return;}
   list.innerHTML='';
   log.forEach((entry,i)=>{
     const card=document.createElement('div');card.className='log-card';
-    card.innerHTML='<div class="log-card-hdr"><div class="log-title">'+entry.name+'</div><div class="log-date">'+(entry.archivedAt||'')+'</div></div>'
-      +'<div class="log-chips">'+(entry.summary||[]).map(t=>'<span class="log-chip">'+t+'</span>').join('')+'</div>'
-      +'<div class="log-actions">'
-      +'<button class="pb acc" data-i="'+i+'" data-a="unarchive">Restore</button>'
-      +'<button class="pb red" data-i="'+i+'" data-a="delete">Delete</button>'
-      +'</div>';
+    if(entry.type==='day-group'){
+      // Day group card
+      const days=entry.days||[];
+      card.innerHTML='<div class="log-card-hdr">'
+        +'<div><div class="log-title">'+entry.blockName+' — '+entry.weekLabel+'</div>'
+        +'<div style="font-size:10px;color:var(--acc);margin-top:2px">'+days.length+' day'+(days.length!==1?'s':'')+'</div></div>'
+        +'<div class="log-date">'+(entry.archivedAt||'')+'</div>'
+        +'</div>'
+        +'<div style="margin-bottom:8px">'
+          +days.map(d=>'<div style="padding:6px 0;border-bottom:1px solid var(--border)">'
+            +'<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px">'+d.dayName+(d.date?' <span style='font-size:10px;color:var(--text3);font-family:var(--fm)'>'+d.date+'</span>':'')+'</div>'
+            +'<div style="display:flex;flex-wrap:wrap;gap:3px">'
+              +d.exercises.filter(e=>e.workout).map(e=>'<span class="log-chip">'+(e.done?'✓ ':'')+e.workout+(e.sets&&e.reps?' '+e.sets+'×'+e.reps:'')+'</span>').join('')
+            +'</div>'
+          +'</div>').join('')
+        +'</div>'
+        +'<div class="log-actions">'
+        +'<button class="pb acc" data-i="'+i+'" data-a="restore-days">Restore</button>'
+        +'<button class="pb red" data-i="'+i+'" data-a="delete">Delete</button>'
+        +'</div>';
+    } else {
+      // Block card
+      card.innerHTML='<div class="log-card-hdr"><div class="log-title">'+(entry.name||'Block')+'</div><div class="log-date">'+(entry.archivedAt||'')+'</div></div>'
+        +'<div class="log-chips">'+(entry.summary||[]).map(t=>'<span class="log-chip">'+t+'</span>').join('')+'</div>'
+        +'<div class="log-actions">'
+        +'<button class="pb acc" data-i="'+i+'" data-a="unarchive">Restore</button>'
+        +'<button class="pb red" data-i="'+i+'" data-a="delete">Delete</button>'
+        +'</div>';
+    }
     card.querySelectorAll('[data-a]').forEach(btn=>btn.addEventListener('click',()=>logAction(btn.dataset.a,parseInt(btn.dataset.i))));
     list.appendChild(card);
   });
@@ -617,6 +673,31 @@ function logAction(action,i){
     const block=entry.blockData?JSON.parse(JSON.stringify(entry.blockData)):makeBlock(entry.name,blocks.length);
     block.archived=false;blocks.push(block);log.splice(i,1);
     localStorage.setItem(LOG_KEY,JSON.stringify(log));renderProgram();renderLog();showToast('Restored');
+  }else if(action==='restore-days'){
+    // Restore days back to their block+week
+    const days=entry.days||[];
+    const groupKey=entry.groupKey||'';
+    const [blockId,weekId]=groupKey.split('_');
+    let targetBlock=blocks.find(b=>b.id===blockId);
+    let targetWeek=targetBlock?.weeks.find(w=>w.id===weekId);
+    if(!targetBlock){
+      // Block gone — create new block
+      targetBlock=makeBlock(entry.blockName||'Restored',blocks.length);
+      targetBlock.weeks=[];
+      blocks.push(targetBlock);
+    }
+    if(!targetWeek){
+      targetWeek={id:weekId||uid(),label:entry.weekLabel||'Week 1',date:'',done:false,days:[]};
+      targetBlock.weeks.push(targetWeek);
+    }
+    days.forEach(d=>{
+      const day={id:d.id||uid(),name:d.dayName,date:d.date||'',done:false,archived:false,exercises:d.exercises||[]};
+      migBlocks();
+      targetWeek.days.push(day);
+    });
+    log.splice(i,1);
+    localStorage.setItem(LOG_KEY,JSON.stringify(log));
+    renderProgram();renderLog();showToast('Days restored!');
   }else if(action==='delete'){
     confirmAction('Delete from Log?','Cannot be undone.',()=>{log.splice(i,1);localStorage.setItem(LOG_KEY,JSON.stringify(log));renderLog();showToast('Deleted');});
   }
