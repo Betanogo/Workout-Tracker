@@ -1036,10 +1036,16 @@ window.addEventListener('DOMContentLoaded',()=>{
       const isMobile=window.innerWidth<=768||/Mobi|Android/i.test(navigator.userAgent);
       const vid=isMobile?vidV:vidH;
       vid.classList.add('active');
-      const dismiss=()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);};
+      const dismiss=()=>{
+        ls.classList.add('hide');
+        setTimeout(()=>ls.style.display='none',600);
+      };
       vid.addEventListener('ended',dismiss);
       vid.addEventListener('error',dismiss);
       vid.play().catch(dismiss);
+      // Tap/click to skip
+      ls.addEventListener('click',dismiss,{once:true});
+      ls.addEventListener('touchstart',dismiss,{once:true,passive:true});
     } else if(ls){
       setTimeout(()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);},500);
     }
