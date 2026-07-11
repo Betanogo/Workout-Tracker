@@ -89,16 +89,18 @@ const toKg=v=>displayUnit==='kg'?v:v/KG2LB;
 const fmt=kg=>kg==null||isNaN(kg)?'—':Math.round(toDisplay(kg))+' '+displayUnit;
 const parseAsKg=v=>{const n=parseFloat(v);return isNaN(n)?null:toKg(n);};
 
-function rpeFactor(rpe,reps){const r=RPE_SCALE[parseFloat(rpe)];if(!r)return null;return r[Math.min(parseInt(reps)-1,9)];}
-function tempoFactor(workout,tempo){
-  if(!tempo||tempo.length<3)return 1;
-  const pause=parseInt(tempo[1])||0,ecc=parseInt(tempo[0])||0;
-  const def=DEF_TEMPO[(workout||'').toUpperCase().split(' ')[0]]||'111';
-  return Math.max(.85,1-(pause*.5+Math.max(0,ecc-(parseInt(def[0])||1))*.3)*.02);
+function rpeFactor(rpe,reps){
+  const r=RPE_SCALE[parseFloat(rpe)];
+  if(!r)return null;
+  return r[Math.min(parseInt(reps)-1,9)];
 }
-function calcWeight(ormKg,rpe,reps,tempo,workout){
+function calcWeight(ormKg,rpe,reps){
+  // Pure formula: Weight = 1RM × RPE%
+  // No tempo adjustment — tempo affects training stimulus, not target weight
   if(!ormKg||!rpe||!reps)return null;
-  const f=rpeFactor(rpe,reps);return f?ormKg*f*tempoFactor(workout,tempo):null;
+  const f=rpeFactor(rpe,reps);
+  if(!f)return null;
+  return Math.round(ormKg*f/2.5)*2.5; // Round to nearest 2.5kg
 }
 function getOrm(workout){
   const k=(workout||'').toUpperCase().replace('LARSON ','').replace(' PRESS','').trim();
@@ -289,7 +291,7 @@ function openExDetail(ex,day){
   if(ex.weightKg!=null){
     wIn.value=toDisplay(ex.weightKg).toFixed(1);
   } else {
-    const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+    const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
     wIn.value=kg?toDisplay(kg).toFixed(1):'';
   }
   overlay.querySelector('#det-weight-unit').textContent=displayUnit;
@@ -340,23 +342,36 @@ function renderSetRepsTracker(ex,overlay){
 
   // Ensure setReps array is right length
   if(!ex.setReps)ex.setReps=[];
-  while(ex.setReps.length<numSets)ex.setReps.push({reps:'',done:false});
+  while(ex.setReps.length<numSets)ex.setReps.push({reps:'',done:false,weightKg:null});
 
   container.innerHTML='';
   const planned=ex.reps||'';
   ex.setReps.slice(0,numSets).forEach((setData,i)=>{
     const row=document.createElement('div');
     row.className='set-row'+(setData.done?' set-row-done':'');
+    // Calculate default weight for this set
+    const defKg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+    const setWt=setData.weightKg!=null?setData.weightKg:defKg;
+    const setWtDisplay=setWt?toDisplay(setWt).toFixed(1):'';
+
     row.innerHTML=
       '<span class="set-row-num">Set '+(i+1)+'</span>'
       +'<div class="set-row-reps">'
         +'<input class="set-reps-in" type="number" inputmode="numeric" value="'+(setData.reps||planned)+'" placeholder="'+(planned||'Reps')+'"/>'
         +'<span class="set-reps-lbl">reps</span>'
       +'</div>'
+      +'<div class="set-row-weight">'
+        +'<input class="set-weight-in" type="number" inputmode="decimal" step="2.5" value="'+setWtDisplay+'" placeholder="'+(defKg?Math.round(toDisplay(defKg)):'wt')+'"/>'
+        +'<span class="set-reps-lbl">'+displayUnit+'</span>'
+      +'</div>'
       +'<div class="set-row-check'+(setData.done?' done':'')+'" data-si="'+i+'">'+( setData.done?'✓':'')+'</div>';
 
     row.querySelector('.set-reps-in').addEventListener('input',e=>{
       ex.setReps[i].reps=e.target.value;
+    });
+    row.querySelector('.set-weight-in').addEventListener('input',e=>{
+      const v=parseFloat(e.target.value);
+      ex.setReps[i].weightKg=isNaN(v)?null:toKg(v);
     });
     row.querySelector('.set-row-check').addEventListener('click',function(){
       ex.setReps[i].done=!ex.setReps[i].done;
@@ -486,7 +501,7 @@ function renderDay(day,block,week,di,curId){
     exToShow.forEach(ex=>{
       const row=document.createElement('div');
       row.className='ex-summary-row'+(ex.done?' ex-summary-done':'');
-      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
       const wStr=kg?fmt(kg):'—';
       const setsStr=ex.sets?(ex.setsCompleted||0)+'/'+ex.sets+' sets':'';
       row.innerHTML='<div class="ex-sum-left">'
@@ -497,7 +512,17 @@ function renderDay(day,block,week,di,curId){
           +'<div class="ex-sum-weight">'+wStr+'</div>'
           +'<span class="ex-sum-arrow">›</span>'
         +'</div>';
-      row.addEventListener('click',()=>openExDetail(ex,day));
+      // Click row body to open detail, but not the delete button
+      row.querySelector('.ex-sum-left,.ex-sum-right').addEventListener('click',()=>openExDetail(ex,day));
+      row.addEventListener('click',e=>{if(!e.target.closest('.ex-sum-delete'))openExDetail(ex,day);});
+      const delBtn=document.createElement('button');delBtn.className='ex-sum-delete';delBtn.textContent='✕';delBtn.title='Remove exercise';
+      delBtn.addEventListener('click',e=>{
+        e.stopPropagation();
+        pushUndo();
+        day.exercises=day.exercises.filter(x=>x.id!==ex.id);
+        renderProgram();
+      });
+      row.appendChild(delBtn);
       exWrap.appendChild(row);
     });
 
@@ -827,7 +852,7 @@ function showCalDetail(dateStr,entries){
         +'<div style="font-size:10px;color:var(--text3)">'+e.blockName+'</div>'
         +'<div style="margin-left:auto;font-family:var(--fm);font-size:10px;color:var(--text3)">'+done+'/'+total+'</div></div>'
         +e.exercises.filter(ex=>ex.workout).map(ex=>{
-          const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+          const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
           return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
             +'<div style="width:18px;height:18px;border-radius:4px;background:'+(ex.done?'var(--acc)':'var(--s3)')+';border:1px solid '+(ex.done?'var(--acc)':'var(--border)')+';display:flex;align-items:center;justify-content:center;font-size:9px;color:'+(ex.done?'var(--acc-text)':'transparent')+'">'+(ex.done?'✓':'')+'</div>'
             +'<div style="flex:1"><div style="font-size:12px;color:'+(ex.done?'var(--text)':'var(--text3)')+'">'+ex.workout+'</div>'
@@ -881,7 +906,7 @@ function backupToExcel(silent=false){
   blocks.filter(b=>!b.archived).forEach(block=>{
     const rows=[['','WEEK','DAY','#','WORKOUT','RPE','','','WEIGHT (kg)','','TEMPO','SETS','REPS','DONE','NOTE']];
     block.weeks.forEach(week=>{week.days.forEach(day=>{day.exercises.forEach((ex,ei)=>{
-      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
       rows.push(['',ei===0?week.label:'',ei===0?day.name:'',ei+1,ex.workout,ex.rpe,'','',kg?Math.round(kg):'','',ex.tempo,ex.sets,ex.reps,ex.done?'V':'',ex.note||'']);
     });});});
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),block.name.slice(0,31));
@@ -948,7 +973,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         const wIn=document.getElementById('det-weight');
         const wCalc=document.getElementById('det-weight-calc');
         if(wCalc&&ex.weightKg==null){
-          const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+          const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
           wCalc.textContent=kg?'Calculated: '+fmt(kg):'';
         }
       });
@@ -1081,9 +1106,10 @@ window.addEventListener('DOMContentLoaded',()=>{
       vid.addEventListener('ended',dismiss);
       vid.addEventListener('error',dismiss);
       vid.play().catch(dismiss);
-      // Tap/click to skip
-      ls.addEventListener('click',dismiss,{once:true});
-      ls.addEventListener('touchstart',dismiss,{once:true,passive:true});
+      // Tap/click to skip — prevent click from going through to app behind
+      ls.style.pointerEvents='all';
+      ls.addEventListener('click',e=>{e.stopPropagation();dismiss();},{once:true});
+      ls.addEventListener('touchstart',e=>{e.stopPropagation();dismiss();},{once:true,passive:false});
     } else if(ls){
       setTimeout(()=>{ls.classList.add('hide');setTimeout(()=>ls.style.display='none',600);},500);
     }

@@ -344,6 +344,17 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 #toast{position:fixed;bottom:calc(72px + var(--sb));left:50%;transform:translateX(-50%) translateY(20px);background:var(--s3);color:var(--text);font-size:11px;font-weight:500;padding:8px 16px;border-radius:50px;border:1px solid var(--border);opacity:0;transition:transform .22s,opacity .22s;white-space:nowrap;pointer-events:none;z-index:600;}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
 
+/* ── EXERCISE DELETE BTN ── */
+.ex-sum-delete{background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:4px 6px;border-radius:4px;flex-shrink:0;transition:color .15s;}
+.ex-sum-delete:hover{color:var(--danger);}
+.ex-summary-row{position:relative;}
+
+/* ── SET ROW WEIGHT ── */
+.set-row-weight{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.set-weight-in{background:var(--s3);border:1px solid var(--border);border-radius:6px;color:var(--acc);font-family:var(--fm);font-size:14px;font-weight:700;outline:none;width:68px;padding:4px 6px;text-align:center;}
+.set-weight-in:focus{border-color:var(--acc);}
+.set-weight-in::placeholder{color:var(--text3);font-weight:400;}
+
 /* ── BLOCK COLORS ── */
 .bc0{background:#e06c00}.bc1{background:#00b4a0}.bc2{background:#9b6dff}.bc3{background:#e06060}.bc4{background:#60a0e0}.bc5{background:#7ec87e}
 
@@ -430,8 +441,8 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 <!-- LOG -->
 <div class="page" id="page-log">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-    <div class="slabel" style="margin:0">Archived Blocks</div>
-    <button class="pb red" id="btn-clear-log">Clear all</button>
+    <div class="slabel" style="margin:0">Archive</div>
+    <button class="nav-icon-btn" id="btn-log-menu" style="font-size:18px">⋮</button>
   </div>
   <div id="log-list"></div>
 </div>
