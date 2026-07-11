@@ -94,13 +94,39 @@ function rpeFactor(rpe,reps){
   if(!r)return null;
   return r[Math.min(parseInt(reps)-1,9)];
 }
-function calcWeight(ormKg,rpe,reps){
-  // Pure formula: Weight = 1RM × RPE%
-  // No tempo adjustment — tempo affects training stimulus, not target weight
+function tempoFactor(tempo, workout){
+  // Rules from Gemini PDF:
+  // Default tempos: SQ/DL = 101 (no penalty), BP = 111 (pause=1 is default, no penalty for BP)
+  // Eccentric penalty: (ecc - 1) * 5% per extra second beyond 1s
+  // Pause penalty: pause * 10% per second
+  //   EXCEPT: BP with pause=1 → no penalty (111 is BP default)
+  // Total penalty capped at 40% reduction
+  if(!tempo||tempo.length<1)return 1;
+  const ecc=parseInt(tempo[0])||1;
+  const pause=parseInt(tempo[1])||0;
+  const con=parseInt(tempo[2])||1;
+
+  // Eccentric penalty: each second beyond 1s = 5%
+  const eccPenalty=Math.max(0,ecc-1)*0.05;
+
+  // Pause penalty: each second = 10%
+  // BP exception: if workout contains 'BP' or 'bench', pause=1 is default = no penalty
+  const isBP=workout&&(/bp|bench/i.test(workout)||/larson/i.test(workout));
+  const effectivePause=isBP?Math.max(0,pause-1):pause;
+  const pausePenalty=effectivePause*0.10;
+
+  const total=eccPenalty+pausePenalty;
+  return Math.max(0.60,1-total);
+}
+
+function calcWeight(ormKg,rpe,reps,tempo,workout){
+  // Weight = 1RM × RPE% × tempoFactor
+  // Rounded to nearest 2.5kg
   if(!ormKg||!rpe||!reps)return null;
   const f=rpeFactor(rpe,reps);
   if(!f)return null;
-  return Math.round(ormKg*f/2.5)*2.5; // Round to nearest 2.5kg
+  const tf=(tempo&&tempo.length>0)?tempoFactor(tempo,workout):1;
+  return Math.round(ormKg*f*tf/2.5)*2.5;
 }
 function getOrm(workout){
   const k=(workout||'').toUpperCase().replace('LARSON ','').replace(' PRESS','').trim();
@@ -274,6 +300,40 @@ function openNote(ex,title){
 }
 
 // ── Exercise Detail View ──────────────────────
+function openExContextMenu(ex,day,rowEl){
+  document.querySelectorAll('.ex-ctx-menu').forEach(m=>m.remove());
+  const menu=document.createElement('div');menu.className='day-ctx-menu ex-ctx-menu';
+  const items=[
+    {label:'✎ Edit details',action:()=>openExDetail(ex,day)},
+    {label:'↑ Move up',action:()=>{
+      const idx=day.exercises.indexOf(ex);
+      if(idx>0){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx-1,0,ex);renderProgram();}
+    }},
+    {label:'↓ Move down',action:()=>{
+      const idx=day.exercises.indexOf(ex);
+      if(idx<day.exercises.length-1){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx+1,0,ex);renderProgram();}
+    }},
+    {label:'🗑 Delete',action:()=>{
+      confirmAction('Delete "'+( ex.workout||'exercise')+'"?','Cannot be undone.',()=>{
+        pushUndo();day.exercises=day.exercises.filter(x=>x.id!==ex.id);renderProgram();
+      });
+    },red:true},
+  ];
+  items.forEach(item=>{
+    const el=document.createElement('div');el.className='ctx-item'+(item.red?' red':'');
+    el.textContent=item.label;
+    el.addEventListener('click',()=>{menu.remove();item.action();});
+    menu.appendChild(el);
+  });
+  document.body.appendChild(menu);
+  const rect=rowEl.getBoundingClientRect();
+  const top=Math.min(rect.bottom+4,window.innerHeight-180);
+  menu.style.top=top+'px';
+  menu.style.left=Math.max(8,rect.left)+'px';
+  menu.style.right='auto';
+  setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);
+}
+
 function openExDetail(ex,day){
   currentDetailEx={ex,day};
   const overlay=document.getElementById('ex-detail-overlay');
@@ -291,7 +351,7 @@ function openExDetail(ex,day){
   if(ex.weightKg!=null){
     wIn.value=toDisplay(ex.weightKg).toFixed(1);
   } else {
-    const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+    const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
     wIn.value=kg?toDisplay(kg).toFixed(1):'';
   }
   overlay.querySelector('#det-weight-unit').textContent=displayUnit;
@@ -350,7 +410,7 @@ function renderSetRepsTracker(ex,overlay){
     const row=document.createElement('div');
     row.className='set-row'+(setData.done?' set-row-done':'');
     // Calculate default weight for this set
-    const defKg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+    const defKg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
     const setWt=setData.weightKg!=null?setData.weightKg:defKg;
     const setWtDisplay=setWt?toDisplay(setWt).toFixed(1):'';
 
@@ -501,7 +561,7 @@ function renderDay(day,block,week,di,curId){
     exToShow.forEach(ex=>{
       const row=document.createElement('div');
       row.className='ex-summary-row'+(ex.done?' ex-summary-done':'');
-      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
       const wStr=kg?fmt(kg):'—';
       const setsStr=ex.sets?(ex.setsCompleted||0)+'/'+ex.sets+' sets':'';
       row.innerHTML='<div class="ex-sum-left">'
@@ -509,20 +569,33 @@ function renderDay(day,block,week,di,curId){
           +'<div class="ex-sum-meta">'+(ex.reps?ex.reps+' reps':'')+(setsStr?' · '+setsStr:'')+'</div>'
         +'</div>'
         +'<div class="ex-sum-right">'
-          +'<div class="ex-sum-weight">'+wStr+'</div>'
+          +'<div class="ex-sum-weight-wrap">'
+            +'<div class="ex-sum-weight">'+wStr+'</div>'
+            +(kg?'<div class="ex-sum-weight-alt">'+(displayUnit==='kg'?Math.round(kg*KG2LB)+' lb':Math.round(kg/KG2LB)+' kg')+'</div>':'')
+          +'</div>'
           +'<span class="ex-sum-arrow">›</span>'
         +'</div>';
-      // Click row body to open detail, but not the delete button
-      row.querySelector('.ex-sum-left,.ex-sum-right').addEventListener('click',()=>openExDetail(ex,day));
-      row.addEventListener('click',e=>{if(!e.target.closest('.ex-sum-delete'))openExDetail(ex,day);});
-      const delBtn=document.createElement('button');delBtn.className='ex-sum-delete';delBtn.textContent='✕';delBtn.title='Remove exercise';
-      delBtn.addEventListener('click',e=>{
-        e.stopPropagation();
-        pushUndo();
-        day.exercises=day.exercises.filter(x=>x.id!==ex.id);
-        renderProgram();
+      // Short click → open detail
+      row.addEventListener('click',e=>{
+        if(!e.target.closest('.ex-ctx-menu'))openExDetail(ex,day);
       });
-      row.appendChild(delBtn);
+
+      // Long press → context menu
+      let exLpTimer=null;
+      const exLpStart=e=>{
+        exLpTimer=setTimeout(()=>{
+          e.preventDefault();
+          openExContextMenu(ex,day,row);
+        },600);
+      };
+      const exLpCancel=()=>clearTimeout(exLpTimer);
+      row.addEventListener('mousedown',exLpStart);
+      row.addEventListener('touchstart',exLpStart,{passive:true});
+      row.addEventListener('mouseup',exLpCancel);
+      row.addEventListener('mouseleave',exLpCancel);
+      row.addEventListener('touchend',exLpCancel);
+      row.addEventListener('touchmove',exLpCancel,{passive:true});
+
       exWrap.appendChild(row);
     });
 
@@ -852,7 +925,7 @@ function showCalDetail(dateStr,entries){
         +'<div style="font-size:10px;color:var(--text3)">'+e.blockName+'</div>'
         +'<div style="margin-left:auto;font-family:var(--fm);font-size:10px;color:var(--text3)">'+done+'/'+total+'</div></div>'
         +e.exercises.filter(ex=>ex.workout).map(ex=>{
-          const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+          const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
           return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
             +'<div style="width:18px;height:18px;border-radius:4px;background:'+(ex.done?'var(--acc)':'var(--s3)')+';border:1px solid '+(ex.done?'var(--acc)':'var(--border)')+';display:flex;align-items:center;justify-content:center;font-size:9px;color:'+(ex.done?'var(--acc-text)':'transparent')+'">'+(ex.done?'✓':'')+'</div>'
             +'<div style="flex:1"><div style="font-size:12px;color:'+(ex.done?'var(--text)':'var(--text3)')+'">'+ex.workout+'</div>'
@@ -906,7 +979,7 @@ function backupToExcel(silent=false){
   blocks.filter(b=>!b.archived).forEach(block=>{
     const rows=[['','WEEK','DAY','#','WORKOUT','RPE','','','WEIGHT (kg)','','TEMPO','SETS','REPS','DONE','NOTE']];
     block.weeks.forEach(week=>{week.days.forEach(day=>{day.exercises.forEach((ex,ei)=>{
-      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+      const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
       rows.push(['',ei===0?week.label:'',ei===0?day.name:'',ei+1,ex.workout,ex.rpe,'','',kg?Math.round(kg):'','',ex.tempo,ex.sets,ex.reps,ex.done?'V':'',ex.note||'']);
     });});});
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),block.name.slice(0,31));
@@ -973,7 +1046,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         const wIn=document.getElementById('det-weight');
         const wCalc=document.getElementById('det-weight-calc');
         if(wCalc&&ex.weightKg==null){
-          const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps);
+          const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
           wCalc.textContent=kg?'Calculated: '+fmt(kg):'';
         }
       });
