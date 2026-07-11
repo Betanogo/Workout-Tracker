@@ -450,6 +450,10 @@ function renderSetRepsTracker(ex,overlay){
         ex.done=true;
         const cb=overlay.querySelector('#det-check');
         if(cb){cb.className='det-check-box done';cb.textContent='✓';}
+        // Auto-set today's date on the day if not set
+        if(currentDetailEx&&currentDetailEx.day&&!currentDetailEx.day.date){
+          currentDetailEx.day.date=new Date().toISOString().slice(0,10);
+        }
       }
     });
     container.appendChild(row);
@@ -542,7 +546,14 @@ function renderDay(day,block,week,di,curId){
   hdr.querySelector('.day-date-in').addEventListener('change',e=>{day.date=e.target.value;event.stopPropagation();});
   hdr.querySelector('[data-a="toggle"]').addEventListener('click',e=>{
     e.stopPropagation();
-    pushUndo();day.done=!day.done;markDayExercises(day,day.done);renderProgram();
+    pushUndo();
+    day.done=!day.done;
+    markDayExercises(day,day.done);
+    // Auto-set today's date if no date set and marking as done
+    if(day.done&&!day.date){
+      day.date=new Date().toISOString().slice(0,10);
+    }
+    renderProgram();
   });
   hdr.querySelector('.day-menu-btn').addEventListener('click',e=>{
     e.stopPropagation();
@@ -1018,6 +1029,10 @@ window.addEventListener('DOMContentLoaded',()=>{
       // Update set reps all to done/undone
       if(ex.setReps)ex.setReps.forEach(s=>s.done=ex.done);
       ex.setsCompleted=ex.done?(parseInt(ex.sets)||0):0;
+      // Auto-set today's date on the day if not set
+      if(ex.done&&currentDetailEx&&currentDetailEx.day&&!currentDetailEx.day.date){
+        currentDetailEx.day.date=new Date().toISOString().slice(0,10);
+      }
       renderSetRepsTracker(ex,detOverlay);
     });
     document.getElementById('det-note-btn')?.addEventListener('click',()=>{
