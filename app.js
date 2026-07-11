@@ -586,26 +586,32 @@ function renderDay(day,block,week,di,curId){
           +'</div>'
           +'<span class="ex-sum-arrow">›</span>'
         +'</div>';
-      // Short click → open detail
-      row.addEventListener('click',e=>{
-        if(!e.target.closest('.ex-ctx-menu'))openExDetail(ex,day);
-      });
-
-      // Long press → context menu
+      // Long press → context menu, short click → open detail
       let exLpTimer=null;
+      let exLpFired=false;
+
       const exLpStart=e=>{
+        exLpFired=false;
         exLpTimer=setTimeout(()=>{
-          e.preventDefault();
+          exLpFired=true;
           openExContextMenu(ex,day,row);
         },600);
       };
       const exLpCancel=()=>clearTimeout(exLpTimer);
+
       row.addEventListener('mousedown',exLpStart);
       row.addEventListener('touchstart',exLpStart,{passive:true});
       row.addEventListener('mouseup',exLpCancel);
       row.addEventListener('mouseleave',exLpCancel);
       row.addEventListener('touchend',exLpCancel);
       row.addEventListener('touchmove',exLpCancel,{passive:true});
+
+      // Only open detail if long press did NOT fire
+      row.addEventListener('click',e=>{
+        if(exLpFired){exLpFired=false;return;}
+        if(e.target.closest('.day-ctx-menu'))return;
+        openExDetail(ex,day);
+      });
 
       exWrap.appendChild(row);
     });
