@@ -189,11 +189,26 @@ function saveAll(){
   supaSave();
 }
 
+// Auto-save with debounce (500ms after last action)
+let _autoSaveTimer=null;
+function autoSave(){
+  localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title')?.value||''}));
+  localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
+  localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
+  localStorage.setItem('tl_last_saved',new Date().toISOString());
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer=setTimeout(()=>{
+    supaSave().then(ok=>{
+      if(ok)console.log('Auto-saved to cloud');
+    });
+  },800);
+}
+
 function migBlocks(){
   blocks.forEach(b=>{
     if(!b.id)b.id=uid();
     (b.weeks||[]).forEach(w=>{
-      if(!w.id)w.id=uid();
+      if(!w.id)w.id=uid();if(!w.weekNum)w.weekNum=wi+1;
       (w.days||[]).forEach(d=>{
         if(!d.id)d.id=uid();
         if(d.archived===undefined)d.archived=false;
@@ -219,7 +234,7 @@ function loadAll(){
 // ── Default structures ────────────────────────
 const makeEx=()=>({id:uid(),workout:'',rpe:'',tempo:'',sets:'',reps:'',done:false,note:'',setsCompleted:0,setReps:[],weightKg:null});
 const makeDay=name=>({id:uid(),name:name||'Day 1',date:'',done:false,archived:false,exercises:[0,1,2,3,4].map(makeEx)});
-const makeWeek=n=>({id:uid(),label:'Week '+n,date:'',done:false,days:DAY_NAMES.map(makeDay)});
+const makeWeek=n=>({id:uid(),label:'Week '+n,weekNum:n,date:'',done:false,days:DAY_NAMES.map(makeDay)});
 const makeBlock=(name,ci)=>({id:uid(),name:name||'New Block',color:BLOCK_COLS[ci%BLOCK_COLS.length],archived:false,weeks:[makeWeek(1)]});
 
 // ── Complete propagation ──────────────────────
@@ -456,8 +471,51 @@ function renderSetRepsTracker(ex,overlay){
         }
       }
     });
+    // Long press to delete set
+    let setLpTimer=null;
+    row.addEventListener('mousedown',()=>{setLpTimer=setTimeout(()=>{
+      if(numSets>1){
+        ex.sets=String(numSets-1);
+        ex.setReps.splice(i,1);
+        const setsIn=overlay.querySelector('#det-sets');
+        if(setsIn)setsIn.value=ex.sets;
+        renderSetRepsTracker(ex,overlay);
+        autoSave();
+        showToast('Set removed');
+      }
+    },700);});
+    row.addEventListener('mouseup',()=>clearTimeout(setLpTimer));
+    row.addEventListener('mouseleave',()=>clearTimeout(setLpTimer));
+    row.addEventListener('touchstart',()=>{setLpTimer=setTimeout(()=>{
+      if(numSets>1){
+        ex.sets=String(numSets-1);
+        ex.setReps.splice(i,1);
+        const setsIn=overlay.querySelector('#det-sets');
+        if(setsIn)setsIn.value=ex.sets;
+        renderSetRepsTracker(ex,overlay);
+        autoSave();
+        showToast('Set removed');
+      }
+    },700);},{passive:true});
+    row.addEventListener('touchend',()=>clearTimeout(setLpTimer));
+    row.addEventListener('touchmove',()=>clearTimeout(setLpTimer),{passive:true});
+
     container.appendChild(row);
   });
+
+  // Add set button
+  const addSetBtn=document.createElement('button');
+  addSetBtn.className='add-set-btn';
+  addSetBtn.textContent='+ Add Set';
+  addSetBtn.addEventListener('click',()=>{
+    ex.sets=String(numSets+1);
+    ex.setReps.push({reps:ex.reps||'',done:false,weightKg:null});
+    const setsIn=overlay.querySelector('#det-sets');
+    if(setsIn)setsIn.value=ex.sets;
+    renderSetRepsTracker(ex,overlay);
+    autoSave();
+  });
+  container.appendChild(addSetBtn);
 }
 
 // ── Render Program ────────────────────────────
@@ -499,7 +557,8 @@ function renderWeek(week,block,wi,curId){
   const doneDays=activeDays.filter(d=>d.done).length;
 
   const hdr=document.createElement('div');hdr.className='wk-header';
-  hdr.innerHTML='<span class="wk-lbl">Week '+(wi+1)+'</span>'
+  const displayWkNum=week.weekNum||(wi+1);
+  hdr.innerHTML='<span class="wk-lbl">Week '+displayWkNum+'</span>'
     +'<span class="wk-meta">'+doneDays+'/'+activeDays.length+'</span>'
     +'<div class="wk-btns">'
       +'<button class="pb sm" data-a="add-day">+Day</button>'
@@ -554,6 +613,7 @@ function renderDay(day,block,week,di,curId){
       day.date=new Date().toISOString().slice(0,10);
     }
     renderProgram();
+    autoSave();
   });
   hdr.querySelector('.day-menu-btn').addEventListener('click',e=>{
     e.stopPropagation();
@@ -683,8 +743,10 @@ function openDayMenu(day,block,week,btn){
 // ── Block/Week actions ────────────────────────
 function blockAction(action,bid){
   const block=blocks.find(b=>b.id===bid);if(!block)return;
-  if(action==='add-week'){pushUndo();block.weeks.push(makeWeek(block.weeks.length+1));renderProgram();}
-  else if(action==='rem-week'){if(block.weeks.length>1){pushUndo();block.weeks.pop();renderProgram();}}
+  if(action==='add-week'){pushUndo();
+    const maxWkNum=block.weeks.reduce((m,w)=>Math.max(m,w.weekNum||0),0);
+    block.weeks.push(makeWeek(maxWkNum+1));renderProgram();autoSave();}
+  else if(action==='rem-week'){if(block.weeks.length>1){pushUndo();block.weeks.pop();renderProgram();autoSave();}}
   else if(action==='copy'){
     const c=JSON.parse(JSON.stringify(block));c.id=uid();c.name=block.name+' (copy)';
     c.color=BLOCK_COLS[(BLOCK_COLS.indexOf(block.color)+1)%BLOCK_COLS.length];
@@ -699,7 +761,7 @@ function weekAction(action,block,week,el){
   if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();}
   else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();}}
   else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Deleted');});}
-  else if(action==='toggle-week'){pushUndo();week.done=!week.done;markWeekDays(week,week.done);renderProgram();}
+  else if(action==='toggle-week'){pushUndo();week.done=!week.done;markWeekDays(week,week.done);renderProgram();autoSave();}
   else if(action==='archive-week'){
     confirmAction('Archive "'+week.label+'"?','All days will move to Log.',()=>{
       pushUndo();
@@ -749,6 +811,114 @@ function archiveToLog(block){
     summary:block.weeks.flatMap(w=>w.days.flatMap(d=>d.exercises.filter(e=>e.workout).map(e=>e.workout+' '+(e.sets||'?')+'x'+(e.reps||'?')+'@'+(e.rpe||'?')))).slice(0,12),
     blockData:JSON.parse(JSON.stringify(block))});
   localStorage.setItem(LOG_KEY,JSON.stringify(log.slice(0,100)));
+}
+
+// ── Performance History ──────────────────────
+function buildPerformanceData(){
+  // Collect all completed exercises across blocks + archived log
+  const exMap={}; // key = workout name, value = [{date, plannedWt, actualWt, plannedReps, actualReps, sets}]
+
+  const processDay=(day,blockName,weekLabel)=>{
+    if(!day.date)return;
+    day.exercises.filter(e=>e.workout&&e.done).forEach(ex=>{
+      if(!exMap[ex.workout])exMap[ex.workout]=[];
+      const plannedWt=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+      // Actual weight from set reps if available
+      const setWts=(ex.setReps||[]).filter(s=>s.done&&s.weightKg).map(s=>s.weightKg);
+      const actualWt=setWts.length?setWts.reduce((a,b)=>a+b,0)/setWts.length:ex.weightKg||plannedWt;
+      const actualReps=(ex.setReps||[]).filter(s=>s.done).map(s=>parseInt(s.reps)||parseInt(ex.reps)||0);
+      exMap[ex.workout].push({
+        date:day.date,
+        blockName,weekLabel,
+        plannedWt:plannedWt?Math.round(plannedWt):null,
+        actualWt:actualWt?Math.round(actualWt):null,
+        plannedReps:parseInt(ex.reps)||null,
+        plannedSets:parseInt(ex.sets)||null,
+        actualReps:actualReps.length?Math.round(actualReps.reduce((a,b)=>a+b,0)/actualReps.length):parseInt(ex.reps)||null,
+        rpe:ex.rpe,
+        done:ex.done,
+      });
+    });
+  };
+
+  blocks.forEach(block=>{
+    block.weeks.forEach(week=>{
+      week.days.forEach(day=>processDay(day,block.name,week.label));
+    });
+  });
+
+  // From log
+  let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
+  log.filter(e=>e.type==='day-group').forEach(entry=>{
+    (entry.days||[]).forEach(day=>processDay(day,entry.blockName,entry.weekLabel));
+  });
+
+  // Sort each exercise by date
+  Object.keys(exMap).forEach(k=>exMap[k].sort((a,b)=>a.date.localeCompare(b.date)));
+  return exMap;
+}
+
+function renderPerformanceTab(){
+  const container=document.getElementById('perf-tab-content');
+  if(!container)return;
+  const data=buildPerformanceData();
+  const exercises=Object.keys(data).filter(k=>data[k].length>0);
+
+  if(!exercises.length){
+    container.innerHTML='<div style="text-align:center;color:var(--text3);padding:40px 0;font-size:12px">Complete and archive workouts to see performance history</div>';
+    return;
+  }
+
+  container.innerHTML='';
+
+  exercises.forEach(exName=>{
+    const records=data[exName];
+    const section=document.createElement('div');
+    section.className='perf-section';
+
+    // Header
+    const hdr=document.createElement('div');
+    hdr.className='perf-ex-header';
+    hdr.textContent=exName;
+    section.appendChild(hdr);
+
+    // Latest vs planned comparison
+    const latest=records[records.length-1];
+    const compRow=document.createElement('div');
+    compRow.className='perf-comp-row';
+    const plannedStr=latest.plannedWt?(latest.plannedWt+' '+displayUnit+(latest.plannedReps?' × '+latest.plannedReps:'')):'—';
+    const actualStr=latest.actualWt?(latest.actualWt+' '+displayUnit+(latest.actualReps?' × '+latest.actualReps:'')):'—';
+    const diff=latest.actualWt&&latest.plannedWt?latest.actualWt-latest.plannedWt:null;
+    const diffStr=diff!=null?(diff>=0?'+':'')+diff+' '+displayUnit:'';
+    compRow.innerHTML='<div class="perf-comp-item"><div class="perf-comp-label">Planned</div><div class="perf-comp-val planned">'+plannedStr+'</div></div>'
+      +'<div class="perf-comp-arrow">→</div>'
+      +'<div class="perf-comp-item"><div class="perf-comp-label">Actual</div><div class="perf-comp-val actual">'+actualStr+'</div>'
+        +(diffStr?'<div class="perf-diff '+(diff>=0?'pos':'neg')+'">'+diffStr+'</div>':'')
+      +'</div>';
+    section.appendChild(compRow);
+
+    // Monthly history
+    if(records.length>1){
+      const histTitle=document.createElement('div');
+      histTitle.className='perf-hist-title';histTitle.textContent='History';
+      section.appendChild(histTitle);
+
+      const table=document.createElement('div');table.className='perf-table';
+      records.slice().reverse().slice(0,12).forEach(r=>{
+        const row=document.createElement('div');row.className='perf-table-row';
+        const d=new Date(r.date+'T12:00:00');
+        const dateStr=d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});
+        row.innerHTML='<span class="perf-date">'+dateStr+'</span>'
+          +'<span class="perf-wt">'+(r.actualWt||r.plannedWt||'—')+' '+displayUnit+'</span>'
+          +'<span class="perf-reps">'+(r.actualReps||r.plannedReps||'—')+' reps</span>'
+          +'<span class="perf-rpe">'+(r.rpe?'@'+r.rpe:'')+'</span>';
+        table.appendChild(row);
+      });
+      section.appendChild(table);
+    }
+
+    container.appendChild(section);
+  });
 }
 
 function renderLog(){
@@ -1040,6 +1210,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         currentDetailEx.day.date=new Date().toISOString().slice(0,10);
       }
       renderSetRepsTracker(ex,detOverlay);
+      autoSave();
     });
     document.getElementById('det-note-btn')?.addEventListener('click',()=>{
       if(!currentDetailEx)return;
@@ -1063,6 +1234,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           const v=parseFloat(document.getElementById(id).value);
           ex.weightKg=isNaN(v)?null:toKg(v);
         }
+        autoSave();
         // Refresh weight display
         const wIn=document.getElementById('det-weight');
         const wCalc=document.getElementById('det-weight-calc');
@@ -1128,7 +1300,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       document.getElementById('page-'+tab.dataset.page)?.classList.add('active');
       if(tab.dataset.page==='stats')renderStats();
       if(tab.dataset.page==='rpe'){renderRPETable();updateCalc();}
-      if(tab.dataset.page==='log')renderLog();
+      if(tab.dataset.page==='log'){renderLog();renderPerformanceTab();}
       if(tab.dataset.page==='calendar')renderCalendar();
     });
   });
@@ -1160,7 +1332,20 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
   ['c1rm','crpe','creps'].forEach(id=>document.getElementById(id)?.addEventListener('input',updateCalc));
   document.getElementById('btn-undo')?.addEventListener('click',undo);
-  document.getElementById('fab')?.addEventListener('click',()=>{saveAll();showToast('Saved ✓');});
+
+  // Log carousel tabs
+  document.querySelectorAll('.log-tab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      document.querySelectorAll('.log-tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.log-tab-content').forEach(c=>c.classList.remove('active'));
+      tab.classList.add('active');
+      const tabId='log-tab-'+tab.dataset.ltab;
+      document.getElementById(tabId)?.classList.add('active');
+      if(tab.dataset.ltab==='performance')renderPerformanceTab();
+      if(tab.dataset.ltab==='archive')renderLog();
+    });
+  });
+  // Auto-save enabled — no manual save button
 
   // Calendar
   document.getElementById('cal-prev')?.addEventListener('click',()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCalendar();});
