@@ -207,7 +207,7 @@ function autoSave(){
 function migBlocks(){
   blocks.forEach(b=>{
     if(!b.id)b.id=uid();
-    (b.weeks||[]).forEach(w=>{
+    (b.weeks||[]).forEach((w,wi)=>{
       if(!w.id)w.id=uid();if(!w.weekNum)w.weekNum=wi+1;
       (w.days||[]).forEach(d=>{
         if(!d.id)d.id=uid();
