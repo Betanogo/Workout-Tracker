@@ -13,11 +13,19 @@ async function supaLoad(){
     if(data&&data[0]){
       const cb=data[0].blocks,cl=data[0].lifts,cs=data[0].settings,cu=data[0].updated_at;
       const ls=localStorage.getItem('tl_last_saved');
-      const newer=!ls||(cu&&new Date(cu)>new Date(ls));
-      if(cb&&cb.length&&newer)blocks=cb;
-      if(cl&&Object.keys(cl||{}).length&&newer)lifts=cl;
+      // Cloud is newer if: no local save timestamp, OR cloud updated_at > local saved
+      const localTime=ls?new Date(ls).getTime():0;
+      const cloudTime=cu?new Date(cu).getTime():0;
+      const cloudNewer=cloudTime>localTime;
+      // Only load cloud if it actually has data AND is newer
+      if(cloudNewer){
+        if(cb&&cb.length){blocks=cb;}
+        if(cl&&Object.keys(cl||{}).length){lifts=cl;}
+      }
+      // Always merge settings
       if(cs&&Object.keys(cs||{}).length)settings=Object.assign({},settings,cs);
       migBlocks();
+      console.log('Cloud newer:',cloudNewer,'Cloud time:',cloudTime,'Local time:',localTime);
       return true;
     }
   }catch(e){console.warn('Supabase load failed:',e);}
@@ -318,19 +326,35 @@ function openNote(ex,title){
 function openExContextMenu(ex,day,rowEl){
   document.querySelectorAll('.ex-ctx-menu').forEach(m=>m.remove());
   const menu=document.createElement('div');menu.className='day-ctx-menu ex-ctx-menu';
+
+  // Build move to day options
+  const moveTargets=[];
+  blocks.filter(b=>!b.archived).forEach(blk=>{
+    blk.weeks.forEach(wk=>{
+      wk.days.forEach(d=>{
+        if(d.id!==day.id)moveTargets.push({label:blk.name+' › '+wk.label+' › '+d.name,day:d,srcDay:day});
+      });
+    });
+  });
+
   const items=[
     {label:'✎ Edit details',action:()=>openExDetail(ex,day)},
     {label:'↑ Move up',action:()=>{
       const idx=day.exercises.indexOf(ex);
-      if(idx>0){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx-1,0,ex);renderProgram();}
+      if(idx>0){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx-1,0,ex);renderProgram();autoSave();}
     }},
     {label:'↓ Move down',action:()=>{
       const idx=day.exercises.indexOf(ex);
-      if(idx<day.exercises.length-1){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx+1,0,ex);renderProgram();}
+      if(idx<day.exercises.length-1){pushUndo();day.exercises.splice(idx,1);day.exercises.splice(idx+1,0,ex);renderProgram();autoSave();}
+    }},
+    {label:'→ Move to…',action:()=>{
+      // Show submenu
+      openExMoveMenu(ex,day,rowEl,moveTargets);
+      return;
     }},
     {label:'🗑 Delete',action:()=>{
       confirmAction('Delete "'+( ex.workout||'exercise')+'"?','Cannot be undone.',()=>{
-        pushUndo();day.exercises=day.exercises.filter(x=>x.id!==ex.id);renderProgram();
+        pushUndo();day.exercises=day.exercises.filter(x=>x.id!==ex.id);renderProgram();autoSave();
       });
     },red:true},
   ];
@@ -693,6 +717,37 @@ function renderDay(day,block,week,di,curId){
 }
 
 // ── Day Menu ──────────────────────────────────
+function openExMoveMenu(ex,srcDay,rowEl,targets){
+  document.querySelectorAll('.ex-ctx-menu').forEach(m=>m.remove());
+  const menu=document.createElement('div');menu.className='day-ctx-menu ex-ctx-menu';
+  menu.style.maxHeight='240px';menu.style.overflowY='auto';
+  if(!targets.length){
+    const el=document.createElement('div');el.className='ctx-item';el.textContent='No other days available';el.style.color='var(--text3)';
+    menu.appendChild(el);
+  }
+  targets.forEach(({label,day:tgtDay})=>{
+    const el=document.createElement('div');el.className='ctx-item';
+    el.textContent=label;
+    el.style.fontSize='11px';
+    el.addEventListener('click',()=>{
+      menu.remove();
+      pushUndo();
+      srcDay.exercises=srcDay.exercises.filter(x=>x.id!==ex.id);
+      tgtDay.exercises.push(ex);
+      renderProgram();autoSave();
+      showToast('Moved to '+tgtDay.name);
+    });
+    menu.appendChild(el);
+  });
+  document.body.appendChild(menu);
+  const rect=rowEl.getBoundingClientRect();
+  const top=Math.min(rect.bottom+4,window.innerHeight-260);
+  menu.style.top=top+'px';
+  menu.style.left=Math.max(8,rect.left)+'px';
+  menu.style.right='auto';
+  setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);
+}
+
 function openDayMenu(day,block,week,btn){
   // Remove existing menu
   document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
@@ -1151,9 +1206,31 @@ function parseSheet(rows,name){
       const exNum=row[3],workout=String(row[4]||'').trim();
       const rpe=row[5]!=null?String(row[5]):'',tempo=row[10]!=null?String(row[10]):'';
       const sets=row[11]!=null?String(row[11]):'',reps=row[12]!=null?String(row[12]):'';
-      if(wk.toLowerCase().includes('week')&&!wk.toLowerCase().includes('workout')){cw={id:uid(),label:wk,date:'',done:false,days:[]};block.weeks.push(cw);cd=null;}
-      if(dy.toLowerCase().includes('day')){cd={id:uid(),name:dy,date:'',done:false,archived:false,exercises:[]};if(!cw){cw={id:uid(),label:'Week 1',date:'',done:false,days:[]};block.weeks.push(cw);}cw.days.push(cd);}
-      if(workout&&exNum!=null&&cd){exNames.add(workout);cd.exercises.push({id:uid(),workout,rpe,tempo,sets:String(sets),reps:String(reps),done:false,note:'',setsCompleted:0,setReps:[],weightKg:null});}
+      // Only create new week if label actually changed
+      if(wk.toLowerCase().includes('week')&&!wk.toLowerCase().includes('workout')){
+        if(!cw||cw.label!==wk){
+          cw={id:uid(),label:wk,weekNum:block.weeks.length+1,date:'',done:false,days:[]};
+          block.weeks.push(cw);cd=null;
+        }
+      }
+      if(dy.toLowerCase().includes('day')){
+        cd={id:uid(),name:dy,date:'',done:false,archived:false,exercises:[]};
+        if(!cw){cw={id:uid(),label:'Week 1',weekNum:1,date:'',done:false,days:[]};block.weeks.push(cw);}
+        cw.days.push(cd);
+      }
+      if(workout&&exNum!=null&&cd){
+        const wtKg=row[8]!=null?parseFloat(row[8]):null;
+        const isDone=String(row[13]||'').trim().toLowerCase()==='v';
+        exNames.add(workout);
+        cd.exercises.push({
+          id:uid(),workout,rpe,tempo,
+          sets:String(sets),reps:String(reps),
+          done:isDone,note:'',
+          setsCompleted:isDone?parseInt(sets)||0:0,
+          setReps:[],
+          weightKg:(!isNaN(wtKg)&&wtKg!=null)?wtKg:null
+        });
+      }
     });
     block.weeks=block.weeks.filter(w=>(w.days||[]).some(d=>(d.exercises||[]).length>0));
     block.weeks.forEach(w=>w.days=w.days.filter(d=>(d.exercises||[]).length>0));
