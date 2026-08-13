@@ -197,19 +197,23 @@ function saveAll(){
   supaSave();
 }
 
-// Auto-save with debounce (500ms after last action)
+// Auto-save: localStorage immediately + cloud with debounce
 let _autoSaveTimer=null;
 function autoSave(){
-  localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title')?.value||''}));
-  localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
-  localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
-  localStorage.setItem('tl_last_saved',new Date().toISOString());
+  // Always save to localStorage immediately
+  const now=new Date().toISOString();
+  try{
+    localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title')?.value||''}));
+    localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
+    localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
+    localStorage.setItem('tl_last_saved',now);
+  }catch(e){console.error('localStorage save failed:',e);}
+  // Cloud save debounced
   clearTimeout(_autoSaveTimer);
-  _autoSaveTimer=setTimeout(()=>{
-    supaSave().then(ok=>{
-      if(ok)console.log('Auto-saved to cloud');
-    });
-  },800);
+  _autoSaveTimer=setTimeout(async()=>{
+    const ok=await supaSave();
+    console.log('Cloud save:', ok?'OK':'FAILED');
+  },1500);
 }
 
 function migBlocks(){
@@ -752,33 +756,30 @@ function openDayMenu(day,block,week,btn){
   // Remove existing menu
   document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
   const menu=document.createElement('div');menu.className='day-ctx-menu';
+  // Build week targets for moving
+  const weekTargets=[];
+  blocks.filter(b=>!b.archived).forEach(blk=>{
+    blk.weeks.forEach((wk,wi)=>{
+      if(wk.id!==week.id){
+        weekTargets.push({label:blk.name+' › Week '+(wk.weekNum||wi+1),week:wk,block:blk});
+      }
+    });
+  });
+
   const items=[
     {label:'Archive Day',action:()=>{
       pushUndo();
-      // Archive day to log
       archiveDayToLog(day,block,week);
-      // Remove from week
       week.days=week.days.filter(d=>d.id!==day.id);
-      renderProgram();
-      renderLog();
-      showToast('Day archived to Log');
+      renderProgram();renderLog();
+      showToast('Day archived to Log');autoSave();
     }},
-    {label:'Move to next week',action:()=>{
-      for(const blk of blocks.filter(b=>!b.archived)){
-        for(let wi=0;wi<blk.weeks.length;wi++){
-          const wk=blk.weeks[wi];const di=wk.days.indexOf(day);
-          if(di>=0){
-            pushUndo();wk.days.splice(di,1);
-            if(wi+1<blk.weeks.length){blk.weeks[wi+1].days.push(day);}
-            else{const nw=makeWeek(blk.weeks.length+1);nw.days=[day];blk.weeks.push(nw);}
-            renderProgram();showToast('Moved to next week');return;
-          }
-        }
-      }
+    {label:'Move to Week →',action:()=>{
+      openDayMoveMenu(day,week,block,btn,weekTargets);
     }},
     {label:'Delete day',action:()=>{
       confirmAction('Delete "'+day.name+'"?','Cannot be undone.',()=>{
-        pushUndo();week.days=week.days.filter(d=>d.id!==day.id);renderProgram();
+        pushUndo();week.days=week.days.filter(d=>d.id!==day.id);renderProgram();autoSave();
       });
     },red:true},
   ];
@@ -830,6 +831,35 @@ function weekAction(action,block,week,el){
 }
 
 // ── Log ───────────────────────────────────────
+function openDayMoveMenu(day,srcWeek,srcBlock,triggerBtn,targets){
+  document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
+  const menu=document.createElement('div');menu.className='day-ctx-menu';
+  menu.style.maxHeight='260px';menu.style.overflowY='auto';
+  if(!targets.length){
+    const el=document.createElement('div');el.className='ctx-item';
+    el.textContent='No other weeks available';el.style.color='var(--text3)';
+    menu.appendChild(el);
+  }
+  targets.forEach(({label,week:tgtWeek})=>{
+    const el=document.createElement('div');el.className='ctx-item';
+    el.textContent=label;el.style.fontSize='12px';
+    el.addEventListener('click',()=>{
+      menu.remove();
+      pushUndo();
+      srcWeek.days=srcWeek.days.filter(d=>d.id!==day.id);
+      tgtWeek.days.push(day);
+      renderProgram();autoSave();
+      showToast('Day moved!');
+    });
+    menu.appendChild(el);
+  });
+  document.body.appendChild(menu);
+  const rect=triggerBtn.getBoundingClientRect();
+  menu.style.top=Math.min(rect.bottom+4,window.innerHeight-280)+'px';
+  menu.style.right=(window.innerWidth-rect.right)+'px';
+  setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);
+}
+
 function archiveDayToLog(day,block,week){
   let log=[];try{log=JSON.parse(localStorage.getItem(LOG_KEY))||[];}catch{}
   // Group by block+week — find existing entry
