@@ -7,41 +7,34 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 async function supaLoad(){
   try{
-    const res=await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main&select=*',{headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});
-    if(!res.ok)return false;
+    const res=await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main&select=*',{
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(!res.ok)return null;
     const data=await res.json();
-    if(data&&data[0]){
-      const cb=data[0].blocks,cl=data[0].lifts,cs=data[0].settings,cu=data[0].updated_at;
-      const ls=localStorage.getItem('tl_last_saved');
-      // Cloud is newer if: no local save timestamp, OR cloud updated_at > local saved
-      const localTime=ls?new Date(ls).getTime():0;
-      const cloudTime=cu?new Date(cu).getTime():0;
-      const cloudNewer=cloudTime>localTime;
-      // Only load cloud if it actually has data AND is newer
-      if(cloudNewer){
-        if(cb&&cb.length){blocks=cb;}
-        if(cl&&Object.keys(cl||{}).length){lifts=cl;}
-      }
-      // Always merge settings
-      if(cs&&Object.keys(cs||{}).length)settings=Object.assign({},settings,cs);
-      migBlocks();
-      console.log('Cloud newer:',cloudNewer,'Cloud time:',cloudTime,'Local time:',localTime);
-      return true;
-    }
+    if(data&&data[0])return data[0];
   }catch(e){console.warn('Supabase load failed:',e);}
-  return false;
+  return null;
 }
 
 async function supaSave(){
   try{
+    const now=new Date().toISOString();
     const res=await fetch(SUPA_URL+'/rest/v1/tatelift_data?id=eq.main',{
       method:'PATCH',
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({blocks,lifts,settings,updated_at:new Date().toISOString()})
+      body:JSON.stringify({blocks,lifts,settings,updated_at:now})
     });
-    return res.ok;
-  }catch(e){return false;}
+    if(res.ok){
+      localStorage.setItem('tl_cloud_saved',now);
+      console.log('Cloud saved OK');
+      return true;
+    }
+  }catch(e){console.warn('Cloud save failed:',e);}
+  return false;
 }
+
+
 
 const AUTO_BACKUP_KEY='tl_last_auto_backup';
 async function autoBackup(){
@@ -197,23 +190,23 @@ function saveAll(){
   supaSave();
 }
 
-// Auto-save: localStorage immediately + cloud with debounce
+// Auto-save: localStorage IMMEDIATELY, cloud debounced
 let _autoSaveTimer=null;
 function autoSave(){
-  // Always save to localStorage immediately
   const now=new Date().toISOString();
+  // 1. Save to localStorage RIGHT NOW
   try{
-    localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title')?.value||''}));
+    localStorage.setItem(SAVE_KEY,JSON.stringify({
+      blocks,
+      title:document.getElementById('prog-title')?.value||''
+    }));
     localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
     localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
     localStorage.setItem('tl_last_saved',now);
-  }catch(e){console.error('localStorage save failed:',e);}
-  // Cloud save debounced
+  }catch(e){console.error('localStorage error:',e);}
+  // 2. Cloud save after 2s of inactivity
   clearTimeout(_autoSaveTimer);
-  _autoSaveTimer=setTimeout(async()=>{
-    const ok=await supaSave();
-    console.log('Cloud save:', ok?'OK':'FAILED');
-  },1500);
+  _autoSaveTimer=setTimeout(()=>supaSave(),2000);
 }
 
 function migBlocks(){
@@ -1477,12 +1470,33 @@ window.addEventListener('DOMContentLoaded',()=>{
   if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
   // Boot
-  loadAll();applySettings();
-  supaLoad().then(fromCloud=>{
-    if(fromCloud)applySettings();
-    if(!blocks.length)blocks.push(makeBlock('My Program',0));
-    renderProgram();renderStats();
-    if(fromCloud)showToast('Synced ☁️');
+  // 1. Load local data first (fast, synchronous)
+  loadAll();
+  applySettings();
+  if(!blocks.length)blocks.push(makeBlock('My Program',0));
+  renderProgram();
+  renderStats();
+
+  // 2. Try cloud - only replace if cloud is STRICTLY newer
+  supaLoad().then(cloudData=>{
+    if(cloudData){
+      const localTime=new Date(localStorage.getItem('tl_last_saved')||0).getTime();
+      const cloudTime=new Date(cloudData.updated_at||0).getTime();
+      console.log('Local time:',localTime,'Cloud time:',cloudTime,'Diff:',(cloudTime-localTime)/1000,'s');
+      if(cloudTime>localTime+5000){
+        // Cloud is more than 5 seconds newer → use cloud data
+        if(cloudData.blocks&&cloudData.blocks.length)blocks=cloudData.blocks;
+        if(cloudData.lifts&&Object.keys(cloudData.lifts||{}).length)lifts=cloudData.lifts;
+        if(cloudData.settings&&Object.keys(cloudData.settings||{}).length)settings=Object.assign({},settings,cloudData.settings);
+        migBlocks();
+        applySettings();
+        renderProgram();
+        renderStats();
+        showToast('Synced from cloud ☁️');
+      } else {
+        console.log('Local is current, keeping local data');
+      }
+    }
     setTimeout(()=>autoBackup(),3000);
     // Loading video
     const ls=document.getElementById('loading-screen');
