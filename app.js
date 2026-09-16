@@ -560,7 +560,7 @@ function renderBlock(block,bi,curId){
     +'<button class="pb" data-a="copy">Copy</button>'
     +'<button class="pb" data-a="archive">Archive</button>'
     +'<button class="pb red" data-a="delete">Delete</button>';
-  nameRow.querySelector('.blk-name-in').addEventListener('input',e=>block.name=e.target.value);
+  nameRow.querySelector('.blk-name-in').addEventListener('input',e=>{block.name=e.target.value;autoSave();});
   btnRow.querySelectorAll('[data-a]').forEach(btn=>btn.addEventListener('click',()=>blockAction(btn.dataset.a,block.id)));
   hdr.appendChild(nameRow);hdr.appendChild(btnRow);
   wrap.appendChild(hdr);
@@ -799,16 +799,16 @@ function blockAction(action,bid){
     const c=JSON.parse(JSON.stringify(block));c.id=uid();c.name=block.name+' (copy)';
     c.color=BLOCK_COLS[(BLOCK_COLS.indexOf(block.color)+1)%BLOCK_COLS.length];
     c.weeks.forEach(w=>{w.id=uid();w.days.forEach(d=>{d.id=uid();d.exercises.forEach(e=>e.id=uid());});});
-    blocks.splice(blocks.indexOf(block)+1,0,c);renderProgram();showToast('Copied');
+    blocks.splice(blocks.indexOf(block)+1,0,c);renderProgram();autoSave();showToast('Copied');
   }
-  else if(action==='archive'){confirmAction('Archive "'+block.name+'"?','Moves to Log.',()=>{pushUndo();block.archived=true;archiveToLog(block);renderProgram();renderLog();showToast('Archived');});}
-  else if(action==='delete'){confirmAction('Delete "'+block.name+'"?','Cannot be undone.',()=>{pushUndo();blocks=blocks.filter(b=>b.id!==bid);renderProgram();showToast('Deleted');});}
+  else if(action==='archive'){confirmAction('Archive "'+block.name+'"?','Moves to Log.',()=>{pushUndo();block.archived=true;archiveToLog(block);renderProgram();renderLog();autoSave();showToast('Archived');});}
+  else if(action==='delete'){confirmAction('Delete "'+block.name+'"?','Cannot be undone.',()=>{pushUndo();blocks=blocks.filter(b=>b.id!==bid);renderProgram();autoSave();showToast('Deleted');});}
 }
 
 function weekAction(action,block,week,el){
-  if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();}
-  else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();}}
-  else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();showToast('Deleted');});}
+  if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();autoSave();}
+  else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();autoSave();}}
+  else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();autoSave();showToast('Deleted');});}
   else if(action==='toggle-week'){pushUndo();week.done=!week.done;markWeekDays(week,week.done);renderProgram();autoSave();}
   else if(action==='archive-week'){
     confirmAction('Archive "'+week.label+'"?','All days will move to Log.',()=>{
@@ -1269,8 +1269,8 @@ function parseSheet(rows,name){
       // Skip header row
       if(workout.toUpperCase()==='WORKOUT'||workout.toUpperCase()==='EXERCISE')return;
 
-      // Exercise row: needs workout name + exercise number + current day
-      if(workout&&exNum!=null&&cd){
+      // Exercise row: workout name + a current day is enough
+      if(workout&&cd){
         exNames.add(workout);
         cd.exercises.push({
           id:uid(),workout,rpe,tempo,
@@ -1398,12 +1398,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
   document.getElementById('import-as-prog')?.addEventListener('click',()=>{
     if(!window._pendingImport)return;
-    window._pendingImport.forEach(b=>blocks.push(b));renderProgram();
+    window._pendingImport.forEach(b=>blocks.push(b));renderProgram();autoSave();
     document.getElementById('modal-import')?.classList.add('hidden');showToast('Added!');window._pendingImport=null;
   });
   document.getElementById('import-as-log')?.addEventListener('click',()=>{
     if(!window._pendingImport)return;
-    window._pendingImport.forEach(b=>{b.archived=true;archiveToLog(b);});renderLog();
+    window._pendingImport.forEach(b=>{b.archived=true;archiveToLog(b);});renderLog();autoSave();
     document.getElementById('modal-import')?.classList.add('hidden');showToast('Saved to Log');window._pendingImport=null;
   });
   document.getElementById('import-cancel')?.addEventListener('click',()=>{document.getElementById('modal-import')?.classList.add('hidden');window._pendingImport=null;});
@@ -1447,7 +1447,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     updateTotals();
     autoSave();
   });
-  document.getElementById('btn-add-block')?.addEventListener('click',()=>{pushUndo();blocks.push(makeBlock('New Block',blocks.length));renderProgram();showToast('Block added');});
+  document.getElementById('btn-add-block')?.addEventListener('click',()=>{pushUndo();blocks.push(makeBlock('New Block',blocks.length));renderProgram();autoSave();showToast('Block added');});
   document.getElementById('btn-import-nav')?.addEventListener('click',()=>document.getElementById('btn-import')?.click());
   document.getElementById('btn-log-menu')?.addEventListener('click',e=>{
     e.stopPropagation();
@@ -1497,6 +1497,17 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   // SW
   if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+  // Safety net: flush save when leaving page
+  window.addEventListener('beforeunload',()=>{
+    try{
+      localStorage.setItem(SAVE_KEY,JSON.stringify({blocks,title:document.getElementById('prog-title')?.value||''}));
+      localStorage.setItem(LIFT_KEY,JSON.stringify({lifts,displayUnit}));
+      localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
+      localStorage.setItem('tl_last_saved',new Date(Date.now()+60000).toISOString());
+    }catch(e){}
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)autoSave();});
 
   // Boot
   // 1. Load local data first (fast, synchronous)
