@@ -1212,7 +1212,8 @@ function parseExcel(wb,filename){
   (sheets.length?sheets:wb.SheetNames.slice(0,1)).forEach(name=>{
     try{
       const ws=wb.Sheets[name];if(!ws)return;
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});if(!rows.length)return;
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:false,blankrows:true});if(!rows.length)return;
+      console.log('Sheet '+name+' rows:',rows.length);
       const block=parseSheet(rows,name);if(block)result.push(block);
     }catch(e){console.error(e);}
   });
@@ -1281,8 +1282,11 @@ function parseSheet(rows,name){
       }
     });
 
+    console.log('Parsed: '+block.weeks.length+' weeks');
+    block.weeks.forEach(w=>console.log('  '+w.label+': '+w.days.length+' days, exercises:',w.days.map(d=>d.exercises.length)));
     block.weeks=block.weeks.filter(w=>(w.days||[]).some(d=>(d.exercises||[]).length>0));
     block.weeks.forEach(w=>w.days=w.days.filter(d=>(d.exercises||[]).length>0));
+    console.log('After filter: '+block.weeks.length+' weeks');
     return block.weeks.length?block:null;
   }catch(e){console.error('parseSheet error:',e);return null;}
 }
