@@ -9,7 +9,8 @@
 <title>TATELIFT</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;min-width:0;}
 :root{
   --bg:#0d0d0d;--s1:#141414;--s2:#181818;--s3:#222;--s4:#2a2a2a;
@@ -19,7 +20,7 @@
   --danger:#e05555;--danger-dim:rgba(224,85,85,0.12);
   --green:#4caf7d;
   --r:14px;--r-sm:10px;--r-xs:7px;
-  --fb:'Space Grotesk',sans-serif;--fm:'Space Mono',monospace;
+  --fb:'Pretendard',sans-serif;--fm:'Space Mono',monospace;
   --sb:env(safe-area-inset-bottom,0px);
 }
 html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:16px;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
@@ -353,6 +354,28 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 .set-weight-in:focus{border-color:var(--acc);}
 .set-weight-in::placeholder{color:var(--text3);font-weight:400;}
 
+/* ── WEEK COLLAPSE / DRAG ── */
+.wk-header{cursor:pointer;user-select:none;}
+.wk-chevron{color:var(--text3);font-size:13px;width:12px;flex-shrink:0;transition:color .15s;}
+.wk-card.wk-current .wk-chevron,.wk-card.wk-current .wk-lbl{color:var(--acc);}
+.wk-card.wk-current{border-color:var(--acc);}
+.wk-collapsed .wk-header{border-bottom:none;}
+.wk-collapsed{opacity:.75;}
+.wk-collapsed:hover{opacity:1;}
+
+/* Drag handle: hidden until long-press arms drag mode */
+.wk-drag{
+  color:var(--text3);font-size:14px;line-height:1;flex-shrink:0;
+  width:0;overflow:hidden;opacity:0;
+  transition:width .18s ease,opacity .18s ease,margin .18s ease;
+  cursor:grab;
+}
+.wk-dragmode .wk-drag{width:16px;opacity:1;margin-right:2px;}
+.wk-dragmode{outline:1px dashed var(--acc);outline-offset:2px;}
+.wk-dragmode .wk-drag:active{cursor:grabbing;}
+.wk-dragging{opacity:.35;}
+.wk-dropzone{outline:2px solid var(--acc);outline-offset:2px;}
+
 /* ── BLOCK COLORS ── */
 .bc0{background:#e06c00}.bc1{background:#00b4a0}.bc2{background:#9b6dff}.bc3{background:#e06060}.bc4{background:#60a0e0}.bc5{background:#7ec87e}
 
@@ -446,6 +469,10 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
       <span class="bw-lbl">BW</span>
       <input type="number" id="bw-input" placeholder="—" step="0.5"/>
       <span class="bw-lbl" id="bw-ul">kg</span>
+    </div>
+    <div class="bw-row">
+      <span class="bw-lbl">Dots</span>
+      <input type="number" id="dots-input" placeholder="—" step="0.01"/>
     </div>
   </div>
   <div class="slabel">Current PRs</div>

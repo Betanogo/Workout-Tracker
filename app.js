@@ -212,7 +212,7 @@ function migBlocks(){
   blocks.forEach(b=>{
     if(!b.id)b.id=uid();
     (b.weeks||[]).forEach((w,wi)=>{
-      if(!w.id)w.id=uid();if(!w.weekNum)w.weekNum=wi+1;
+      if(!w.id)w.id=uid();if(!w.weekNum)w.weekNum=wi+1;if(w.collapsed===undefined)w.collapsed=undefined;
       (w.days||[]).forEach(d=>{
         if(!d.id)d.id=uid();
         if(d.archived===undefined)d.archived=false;
@@ -383,13 +383,16 @@ function openExDetail(ex,day){
 
   // Weight - show actual weight or calculated
   const wIn=overlay.querySelector('#det-weight');
-  if(ex.weightKg!=null){
-    wIn.value=toDisplay(ex.weightKg).toFixed(1);
-  } else {
-    const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
-    wIn.value=kg?toDisplay(kg).toFixed(1):'';
-  }
+  const shownKg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+  wIn.value=shownKg?toDisplay(shownKg).toFixed(1).replace(/\.0$/,''):'';
   overlay.querySelector('#det-weight-unit').textContent=displayUnit;
+  const wCalc0=overlay.querySelector('#det-weight-calc');
+  if(wCalc0){
+    if(shownKg){
+      const alt=displayUnit==='kg'?Math.round(shownKg*KG2LB)+' lb':Math.round(shownKg/KG2LB)+' kg';
+      wCalc0.textContent=(ex.weightKg!=null?'Set weight: ':'Calculated: ')+fmt(shownKg)+' ('+alt+')';
+    } else wCalc0.textContent='';
+  }
 
   // Note
   overlay.querySelector('#det-note').value=ex.note||'';
@@ -427,6 +430,32 @@ function closeExDetail(){
     currentDetailEx=null;
   }
   renderProgram();
+}
+
+// Push current exercise-level weight/reps down into set rows that have no override
+function syncSetRows(ex,overlay){
+  if(!overlay)return;
+  const container=overlay.querySelector('#det-set-tracker');
+  if(!container)return;
+  const defKg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+  const planned=ex.reps||'';
+  container.querySelectorAll('.set-row').forEach((row,i)=>{
+    const sd=(ex.setReps||[])[i];if(!sd)return;
+    const wIn=row.querySelector('.set-weight-in');
+    if(wIn&&document.activeElement!==wIn){
+      if(sd.weightKg==null){
+        wIn.value=defKg?toDisplay(defKg).toFixed(1).replace(/\.0$/,''):'';
+      }
+      wIn.placeholder=defKg?String(Math.round(toDisplay(defKg))):'wt';
+    }
+    const rIn=row.querySelector('.set-reps-in');
+    if(rIn&&document.activeElement!==rIn){
+      if(!sd.reps)rIn.value=planned;
+      rIn.placeholder=planned||'Reps';
+    }
+    const uLbl=row.querySelector('.set-row-weight .set-reps-lbl');
+    if(uLbl)uLbl.textContent=displayUnit;
+  });
 }
 
 function renderSetRepsTracker(ex,overlay){
@@ -576,10 +605,21 @@ function renderWeek(week,block,wi,curId){
   const activeDays=week.days.filter(d=>!d.archived);
   const doneDays=activeDays.filter(d=>d.done).length;
 
+  // Does this week contain the current day?
+  const hasCurrent=week.days.some(d=>d.id===curId);
+  // Collapsed state: explicit user choice wins, else collapse unless it's the current week
+  if(week.collapsed===undefined)week.collapsed=!hasCurrent;
+  const collapsed=week.collapsed;
+  if(collapsed)wrap.classList.add('wk-collapsed');
+  if(hasCurrent)wrap.classList.add('wk-current');
+
   const hdr=document.createElement('div');hdr.className='wk-header';
   const displayWkNum=week.weekNum||(wi+1);
-  hdr.innerHTML='<span class="wk-lbl">Week '+displayWkNum+'</span>'
-    +'<span class="wk-meta">'+doneDays+'/'+activeDays.length+'</span>'
+  const totalEx=week.days.reduce((s,d)=>s+d.exercises.length,0);
+  hdr.innerHTML='<span class="wk-drag" title="Hold to reorder">⠿</span>'
+    +'<span class="wk-chevron">'+(collapsed?'›':'⌄')+'</span>'
+    +'<span class="wk-lbl">Week '+displayWkNum+'</span>'
+    +'<span class="wk-meta">'+doneDays+'/'+activeDays.length+(collapsed&&totalEx?' · '+totalEx+' ex':'')+'</span>'
     +'<div class="wk-btns">'
       +'<button class="pb sm" data-a="add-day">+Day</button>'
       +'<button class="pb sm" data-a="rem-day">−Day</button>'
@@ -587,13 +627,89 @@ function renderWeek(week,block,wi,curId){
       +'<button class="pb sm red" data-a="del-week">✕</button>'
       +'<div class="check-box'+(state==='done'?' done':state==='partial'?' partial':'')+'" data-a="toggle-week">'+(state==='done'?'✓':state==='partial'?'–':'')+'</div>'
     +'</div>';
-  hdr.querySelectorAll('[data-a]').forEach(el=>el.addEventListener('click',()=>weekAction(el.dataset.a,block,week,el)));
+
+  hdr.querySelectorAll('[data-a]').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation();
+    weekAction(el.dataset.a,block,week,el);
+  }));
+
+  // Click header (not buttons) to toggle collapse
+  hdr.addEventListener('click',e=>{
+    if(e.target.closest('[data-a]'))return;
+    if(e.target.closest('.wk-drag'))return;
+    if(wrap.classList.contains('wk-dragmode'))return;
+    week.collapsed=!week.collapsed;
+    renderProgram();autoSave();
+  });
+
+  // ── Long press on week header → enter drag mode ──
+  let wkLpTimer=null;
+  const enterDragMode=()=>{
+    document.querySelectorAll('.wk-dragmode').forEach(el=>el.classList.remove('wk-dragmode'));
+    wrap.classList.add('wk-dragmode');
+    showToast('Drag the handle to reorder');
+    setTimeout(()=>{
+      document.addEventListener('click',function off(ev){
+        if(!wrap.contains(ev.target)){wrap.classList.remove('wk-dragmode');document.removeEventListener('click',off);}
+      });
+    },0);
+  };
+  const lpStart=()=>{wkLpTimer=setTimeout(enterDragMode,600);};
+  const lpCancel=()=>clearTimeout(wkLpTimer);
+  hdr.addEventListener('mousedown',lpStart);
+  hdr.addEventListener('touchstart',lpStart,{passive:true});
+  ['mouseup','mouseleave','touchend','touchmove'].forEach(ev=>hdr.addEventListener(ev,lpCancel,{passive:true}));
+
+  // ── Drag handle ──
+  const handle=hdr.querySelector('.wk-drag');
+  handle.addEventListener('click',e=>{e.stopPropagation();});
+  handle.addEventListener('mousedown',e=>{e.stopPropagation();wrap.draggable=true;});
+  handle.addEventListener('touchstart',e=>{e.stopPropagation();wrap.draggable=true;enterDragMode();},{passive:true});
+
+  wrap.addEventListener('dragstart',e=>{
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/week',week.id);
+    window._draggingWeek={weekId:week.id,blockId:block.id};
+    setTimeout(()=>wrap.classList.add('wk-dragging'),0);
+  });
+  wrap.addEventListener('dragend',()=>{
+    wrap.draggable=false;
+    wrap.classList.remove('wk-dragging');
+    document.querySelectorAll('.wk-dropzone').forEach(el=>el.classList.remove('wk-dropzone'));
+    window._draggingWeek=null;
+  });
+  wrap.addEventListener('dragover',e=>{
+    const d=window._draggingWeek;
+    if(!d||d.weekId===week.id)return;
+    e.preventDefault();e.stopPropagation();
+    wrap.classList.add('wk-dropzone');
+  });
+  wrap.addEventListener('dragleave',e=>{
+    if(!wrap.contains(e.relatedTarget))wrap.classList.remove('wk-dropzone');
+  });
+  wrap.addEventListener('drop',e=>{
+    e.preventDefault();e.stopPropagation();
+    wrap.classList.remove('wk-dropzone');
+    const d=window._draggingWeek;if(!d||d.weekId===week.id)return;
+    const srcBlock=blocks.find(b=>b.id===d.blockId);if(!srcBlock)return;
+    const si=srcBlock.weeks.findIndex(w=>w.id===d.weekId);if(si<0)return;
+    const ti=block.weeks.findIndex(w=>w.id===week.id);if(ti<0)return;
+    pushUndo();
+    const [moved]=srcBlock.weeks.splice(si,1);
+    block.weeks.splice(ti,0,moved);
+    renderProgram();autoSave();showToast('Week reordered');
+  });
+  wrap.draggable=false;
+
   wrap.appendChild(hdr);
 
-  // Days
-  const daysWrap=document.createElement('div');daysWrap.className='wk-days';
-  week.days.forEach((d,di)=>daysWrap.appendChild(renderDay(d,block,week,di,curId)));
-  wrap.appendChild(daysWrap);
+  // Days (hidden when collapsed)
+  if(!collapsed){
+    const daysWrap=document.createElement('div');daysWrap.className='wk-days';
+    week.days.forEach((d,di)=>daysWrap.appendChild(renderDay(d,block,week,di,curId)));
+    wrap.appendChild(daysWrap);
+  }
   return wrap;
 }
 
@@ -1383,16 +1499,28 @@ window.addEventListener('DOMContentLoaded',()=>{
           renderSetRepsTracker(ex,detOverlay);
         }
         if(id==='det-weight'){
-          const v=parseFloat(document.getElementById(id).value);
-          ex.weightKg=isNaN(v)?null:toKg(v);
+          const raw=document.getElementById(id).value.trim();
+          const v=parseFloat(raw);
+          ex.weightKg=(raw===''||isNaN(v))?null:toKg(v);
         }
+
+        // Any of these change the target weight/reps → push into set rows
+        if(id==='det-weight'||id==='det-rpe'||id==='det-reps'||id==='det-tempo'||id==='det-name'){
+          syncSetRows(ex,detOverlay);
+        }
+
         autoSave();
-        // Refresh weight display
-        const wIn=document.getElementById('det-weight');
+
+        // Refresh calculated-weight hint
         const wCalc=document.getElementById('det-weight-calc');
-        if(wCalc&&ex.weightKg==null){
-          const kg=calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
-          wCalc.textContent=kg?'Calculated: '+fmt(kg):'';
+        if(wCalc){
+          const kg=ex.weightKg!=null?ex.weightKg:calcWeight(getOrm(ex.workout),ex.rpe,ex.reps,ex.tempo,ex.workout);
+          if(kg){
+            const alt=displayUnit==='kg'?Math.round(kg*KG2LB)+' lb':Math.round(kg/KG2LB)+' kg';
+            wCalc.textContent=(ex.weightKg!=null?'Set weight: ':'Calculated: ')+fmt(kg)+' ('+alt+')';
+          } else {
+            wCalc.textContent='';
+          }
         }
       });
     });
