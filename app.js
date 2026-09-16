@@ -1223,45 +1223,66 @@ function parseSheet(rows,name){
   try{
     const block=makeBlock(name,blocks.length%BLOCK_COLS.length);block.weeks=[];
     let cw=null,cd=null;
+
     rows.forEach(row=>{
       if(!row||!row.some(v=>v!=null))return;
-      const wk=String(row[1]||'').trim(),dy=String(row[2]||'').replace(/\n/g,' ').trim();
-      const exNum=row[3],workout=String(row[4]||'').trim();
-      const rpe=row[5]!=null?String(row[5]):'',tempo=row[10]!=null?String(row[10]):'';
-      const sets=row[11]!=null?String(row[11]):'',reps=row[12]!=null?String(row[12]):'';
-      // Only create new week if label actually changed
-      if(wk.toLowerCase().includes('week')&&!wk.toLowerCase().includes('workout')){
-        if(!cw||cw.label!==wk){
-          cw={id:uid(),label:wk,weekNum:block.weeks.length+1,date:'',done:false,days:[]};
+
+      const wkCell=String(row[1]||'').trim();
+      const dyCell=String(row[2]||'').replace(/\n/g,' ').trim();
+      const exNum=row[3];
+      const workout=String(row[4]||'').trim();
+      const rpe=row[5]!=null?String(row[5]):'';
+
+      // Weight kg - col I (index 8), only use if actual number
+      let wtKg=null;
+      const rawWt=row[8];
+      if(rawWt!=null&&typeof rawWt==='number'&&!isNaN(rawWt)&&rawWt>0) wtKg=rawWt;
+
+      const tempo=row[10]!=null?String(row[10]):'';
+      const sets=row[11]!=null?String(row[11]):'';
+      const reps=row[12]!=null?String(row[12]):'';
+      const isDone=String(row[13]||'').trim()==='✓'||String(row[13]||'').trim().toLowerCase()==='v';
+
+      // New week when col B changes
+      // Skip the header row
+      if(wkCell.toUpperCase()==='WEEK'||dyCell.toUpperCase()==='DAY')return;
+
+      if(wkCell&&wkCell.toLowerCase().includes('week')&&!wkCell.toLowerCase().includes('workout')){
+        if(!cw||cw.label!==wkCell){
+          cw={id:uid(),label:wkCell,weekNum:block.weeks.length+1,date:'',done:false,days:[]};
           block.weeks.push(cw);cd=null;
         }
       }
-      if(dy.toLowerCase().includes('day')){
-        cd={id:uid(),name:dy,date:'',done:false,archived:false,exercises:[]};
+
+      // New day when col C has "day"
+      if(dyCell&&dyCell.toLowerCase().includes('day')){
         if(!cw){cw={id:uid(),label:'Week 1',weekNum:1,date:'',done:false,days:[]};block.weeks.push(cw);}
+        cd={id:uid(),name:dyCell,date:'',done:false,archived:false,exercises:[]};
         cw.days.push(cd);
       }
+
+      // Skip header row
+      if(workout.toUpperCase()==='WORKOUT'||workout.toUpperCase()==='EXERCISE')return;
+
+      // Exercise row: needs workout name + exercise number + current day
       if(workout&&exNum!=null&&cd){
-        const wtKg=row[8]!=null?parseFloat(row[8]):null;
-        const isDone=String(row[13]||'').trim().toLowerCase()==='v';
         exNames.add(workout);
         cd.exercises.push({
           id:uid(),workout,rpe,tempo,
           sets:String(sets),reps:String(reps),
           done:isDone,note:'',
           setsCompleted:isDone?parseInt(sets)||0:0,
-          setReps:[],
-          weightKg:(!isNaN(wtKg)&&wtKg!=null)?wtKg:null
+          setReps:[],weightKg:wtKg
         });
       }
     });
+
     block.weeks=block.weeks.filter(w=>(w.days||[]).some(d=>(d.exercises||[]).length>0));
     block.weeks.forEach(w=>w.days=w.days.filter(d=>(d.exercises||[]).length>0));
     return block.weeks.length?block:null;
-  }catch(e){console.error(e);return null;}
+  }catch(e){console.error('parseSheet error:',e);return null;}
 }
 
-// ── Backup ────────────────────────────────────
 function backupToExcel(silent=false){
   const wb=XLSX.utils.book_new();
   blocks.filter(b=>!b.archived).forEach(block=>{
