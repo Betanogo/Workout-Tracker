@@ -193,8 +193,8 @@ function saveAll(){
 // Auto-save: localStorage IMMEDIATELY, cloud debounced
 let _autoSaveTimer=null;
 function autoSave(){
-  const now=new Date().toISOString();
-  // 1. Save to localStorage RIGHT NOW
+  // Save local timestamp 60s in the future so it ALWAYS beats cloud on next load
+  const now=new Date(Date.now()+60000).toISOString();
   try{
     localStorage.setItem(SAVE_KEY,JSON.stringify({
       blocks,
@@ -204,7 +204,6 @@ function autoSave(){
     localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
     localStorage.setItem('tl_last_saved',now);
   }catch(e){console.error('localStorage error:',e);}
-  // 2. Cloud save after 2s of inactivity
   clearTimeout(_autoSaveTimer);
   _autoSaveTimer=setTimeout(()=>supaSave(),2000);
 }
@@ -1233,10 +1232,15 @@ function parseSheet(rows,name){
       const workout=String(row[4]||'').trim();
       const rpe=row[5]!=null?String(row[5]):'';
 
-      // Weight kg - col I (index 8), only use if actual number
+      // Weight: try col I (kg, index 8) first, then col G (lb, index 6)
       let wtKg=null;
-      const rawWt=row[8];
-      if(rawWt!=null&&typeof rawWt==='number'&&!isNaN(rawWt)&&rawWt>0) wtKg=rawWt;
+      const rawWtKg=parseFloat(row[8]);
+      const rawWtLb=parseFloat(row[6]);
+      if(!isNaN(rawWtKg)&&rawWtKg>0){
+        wtKg=rawWtKg;
+      } else if(!isNaN(rawWtLb)&&rawWtLb>0){
+        wtKg=rawWtLb/KG2LB; // convert lb to kg
+      }
 
       const tempo=row[10]!=null?String(row[10]):'';
       const sets=row[11]!=null?String(row[11]):'';
@@ -1376,7 +1380,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       const reader=new FileReader();
       reader.onload=e=>{
         try{
-          const wb=XLSX.read(e.target.result,{type:'array'});
+          const wb=XLSX.read(e.target.result,{type:'array',cellFormula:false,cellNF:false,raw:false});
           const parsed=parseExcel(wb,this.files[0].name);
           window._pendingImport=parsed;
           document.getElementById('import-sub').textContent='Found '+parsed.length+' block(s) from "'+this.files[0].name+'"';
