@@ -1221,69 +1221,91 @@ function parseExcel(wb,filename){
 }
 function parseSheet(rows,name){
   try{
+    // ── Find header row and map columns by NAME (handles column shifting) ──
+    let H=null, headerIdx=-1;
+    for(let i=0;i<Math.min(rows.length,20);i++){
+      const r=rows[i]; if(!r)continue;
+      const cells=r.map(v=>String(v==null?'':v).trim().toUpperCase());
+      const wi=cells.findIndex(v=>v==='WEEK');
+      const di=cells.findIndex(v=>v==='DAY');
+      const xi=cells.findIndex(v=>v==='WORKOUT'||v==='EXERCISE');
+      if(wi>=0&&di>=0&&xi>=0){
+        H={
+          week:wi, day:di, workout:xi,
+          num:cells.findIndex(v=>v==='#'),
+          rpe:cells.findIndex(v=>v==='RPE'),
+          kg:cells.findIndex(v=>v.indexOf('KG')>=0),
+          lb:cells.findIndex(v=>v.indexOf('LB')>=0),
+          tempo:cells.findIndex(v=>v==='TEMPO'),
+          sets:cells.findIndex(v=>v==='SETS'),
+          reps:cells.findIndex(v=>v==='REPS'),
+          done:cells.findIndex(v=>v==='✓'||v==='DONE')
+        };
+        headerIdx=i; break;
+      }
+    }
+    // Fallback to fixed layout if no header found
+    if(!H){H={week:1,day:2,num:3,workout:4,rpe:5,lb:6,kg:8,tempo:10,sets:11,reps:12,done:13};headerIdx=-1;}
+    console.log('Header row:',headerIdx,'map:',H);
+
+    const get=(r,i)=>(i>=0&&r[i]!=null)?String(r[i]).trim():'';
+
     const block=makeBlock(name,blocks.length%BLOCK_COLS.length);block.weeks=[];
     let cw=null,cd=null;
 
-    rows.forEach(row=>{
+    rows.forEach((row,ri)=>{
       if(!row||!row.some(v=>v!=null))return;
+      if(ri<=headerIdx)return; // skip header and anything above it
 
-      const wkCell=String(row[1]||'').trim();
-      const dyCell=String(row[2]||'').replace(/\n/g,' ').trim();
-      const exNum=row[3];
-      const workout=String(row[4]||'').trim();
-      const rpe=row[5]!=null?String(row[5]):'';
+      const wkCell=get(row,H.week);
+      const dyCell=get(row,H.day).replace(/\n/g,' ');
+      const workout=get(row,H.workout);
+      const rpe=get(row,H.rpe);
+      const tempo=get(row,H.tempo);
+      const sets=get(row,H.sets);
+      const reps=get(row,H.reps);
+      const doneCell=get(row,H.done);
+      const isDone=doneCell==='✓'||doneCell.toLowerCase()==='v';
 
-      // Weight: try col I (kg, index 8) first, then col G (lb, index 6)
+      // Weight: prefer kg, else convert lb
       let wtKg=null;
-      const rawWtKg=parseFloat(row[8]);
-      const rawWtLb=parseFloat(row[6]);
-      if(!isNaN(rawWtKg)&&rawWtKg>0){
-        wtKg=rawWtKg;
-      } else if(!isNaN(rawWtLb)&&rawWtLb>0){
-        wtKg=rawWtLb/KG2LB; // convert lb to kg
-      }
+      const kgVal=parseFloat(get(row,H.kg).replace(/[^0-9.\-]/g,''));
+      const lbVal=parseFloat(get(row,H.lb).replace(/[^0-9.\-]/g,''));
+      if(!isNaN(kgVal)&&kgVal>0)wtKg=kgVal;
+      else if(!isNaN(lbVal)&&lbVal>0)wtKg=lbVal/KG2LB;
 
-      const tempo=row[10]!=null?String(row[10]):'';
-      const sets=row[11]!=null?String(row[11]):'';
-      const reps=row[12]!=null?String(row[12]):'';
-      const isDone=String(row[13]||'').trim()==='✓'||String(row[13]||'').trim().toLowerCase()==='v';
-
-      // New week when col B changes
-      // Skip the header row
-      if(wkCell.toUpperCase()==='WEEK'||dyCell.toUpperCase()==='DAY')return;
-
-      if(wkCell&&wkCell.toLowerCase().includes('week')&&!wkCell.toLowerCase().includes('workout')){
+      // New week only when the label changes
+      if(wkCell&&/week/i.test(wkCell)){
         if(!cw||cw.label!==wkCell){
           cw={id:uid(),label:wkCell,weekNum:block.weeks.length+1,date:'',done:false,days:[]};
           block.weeks.push(cw);cd=null;
         }
       }
 
-      // New day when col C has "day"
-      if(dyCell&&dyCell.toLowerCase().includes('day')){
+      // New day
+      if(dyCell&&/day/i.test(dyCell)){
         if(!cw){cw={id:uid(),label:'Week 1',weekNum:1,date:'',done:false,days:[]};block.weeks.push(cw);}
         cd={id:uid(),name:dyCell,date:'',done:false,archived:false,exercises:[]};
         cw.days.push(cd);
       }
 
-      // Skip header row
-      if(workout.toUpperCase()==='WORKOUT'||workout.toUpperCase()==='EXERCISE')return;
-
-      // Exercise row: workout name + a current day is enough
-      if(workout&&cd){
+      // Exercise row
+      if(workout&&!/^(workout|exercise)$/i.test(workout)){
+        if(!cw){cw={id:uid(),label:'Week 1',weekNum:1,date:'',done:false,days:[]};block.weeks.push(cw);}
+        if(!cd){cd={id:uid(),name:'Day 1',date:'',done:false,archived:false,exercises:[]};cw.days.push(cd);}
         exNames.add(workout);
         cd.exercises.push({
           id:uid(),workout,rpe,tempo,
-          sets:String(sets),reps:String(reps),
+          sets:sets,reps:reps,
           done:isDone,note:'',
-          setsCompleted:isDone?parseInt(sets)||0:0,
+          setsCompleted:isDone?(parseInt(sets)||0):0,
           setReps:[],weightKg:wtKg
         });
       }
     });
 
     console.log('Parsed: '+block.weeks.length+' weeks');
-    block.weeks.forEach(w=>console.log('  '+w.label+': '+w.days.length+' days, exercises:',w.days.map(d=>d.exercises.length)));
+    block.weeks.forEach(w=>console.log('  '+w.label+': '+w.days.length+' days, ex:',w.days.map(d=>d.exercises.length)));
     block.weeks=block.weeks.filter(w=>(w.days||[]).some(d=>(d.exercises||[]).length>0));
     block.weeks.forEach(w=>w.days=w.days.filter(d=>(d.exercises||[]).length>0));
     console.log('After filter: '+block.weeks.length+' weeks');
