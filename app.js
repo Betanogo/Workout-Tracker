@@ -599,11 +599,18 @@ function renderBlock(block,bi,curId){
   return wrap;
 }
 
+// Re-assign sequential week numbers after reorder / add / remove
+function renumberWeeks(block){
+  if(!block||!block.weeks)return;
+  block.weeks.forEach((w,i)=>{
+    w.weekNum=i+1;
+    w.label='Week '+(i+1);
+  });
+}
+
 function renderWeek(week,block,wi,curId){
   const wrap=document.createElement('div');wrap.className='wk-card';wrap.dataset.wid=week.id;
   const state=getWeekDoneState(week);
-  const activeDays=week.days.filter(d=>!d.archived);
-  const doneDays=activeDays.filter(d=>d.done).length;
 
   // Does this week contain the current day?
   const hasCurrent=week.days.some(d=>d.id===curId);
@@ -615,11 +622,9 @@ function renderWeek(week,block,wi,curId){
 
   const hdr=document.createElement('div');hdr.className='wk-header';
   const displayWkNum=week.weekNum||(wi+1);
-  const totalEx=week.days.reduce((s,d)=>s+d.exercises.length,0);
   hdr.innerHTML='<span class="wk-drag" title="Hold to reorder">⠿</span>'
     +'<span class="wk-chevron">'+(collapsed?'›':'⌄')+'</span>'
     +'<span class="wk-lbl">Week '+displayWkNum+'</span>'
-    +'<span class="wk-meta">'+doneDays+'/'+activeDays.length+(collapsed&&totalEx?' · '+totalEx+' ex':'')+'</span>'
     +'<div class="wk-btns">'
       +'<button class="pb sm" data-a="add-day">+Day</button>'
       +'<button class="pb sm" data-a="rem-day">−Day</button>'
@@ -698,6 +703,8 @@ function renderWeek(week,block,wi,curId){
     pushUndo();
     const [moved]=srcBlock.weeks.splice(si,1);
     block.weeks.splice(ti,0,moved);
+    renumberWeeks(srcBlock);
+    if(block!==srcBlock)renumberWeeks(block);
     renderProgram();autoSave();showToast('Week reordered');
   });
   wrap.draggable=false;
@@ -908,9 +915,9 @@ function openDayMenu(day,block,week,btn){
 function blockAction(action,bid){
   const block=blocks.find(b=>b.id===bid);if(!block)return;
   if(action==='add-week'){pushUndo();
-    const maxWkNum=block.weeks.reduce((m,w)=>Math.max(m,w.weekNum||0),0);
-    block.weeks.push(makeWeek(maxWkNum+1));renderProgram();autoSave();}
-  else if(action==='rem-week'){if(block.weeks.length>1){pushUndo();block.weeks.pop();renderProgram();autoSave();}}
+    block.weeks.push(makeWeek(block.weeks.length+1));
+    renumberWeeks(block);renderProgram();autoSave();}
+  else if(action==='rem-week'){if(block.weeks.length>1){pushUndo();block.weeks.pop();renumberWeeks(block);renderProgram();autoSave();}}
   else if(action==='copy'){
     const c=JSON.parse(JSON.stringify(block));c.id=uid();c.name=block.name+' (copy)';
     c.color=BLOCK_COLS[(BLOCK_COLS.indexOf(block.color)+1)%BLOCK_COLS.length];
@@ -924,7 +931,7 @@ function blockAction(action,bid){
 function weekAction(action,block,week,el){
   if(action==='add-day'){pushUndo();week.days.push(makeDay('Day '+(week.days.length+1)));renderProgram();autoSave();}
   else if(action==='rem-day'){if(week.days.length>1){pushUndo();week.days.pop();renderProgram();autoSave();}}
-  else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renderProgram();autoSave();showToast('Deleted');});}
+  else if(action==='del-week'){confirmAction('Delete week?','All exercises will be removed.',()=>{pushUndo();block.weeks=block.weeks.filter(w=>w.id!==week.id);renumberWeeks(block);renderProgram();autoSave();showToast('Deleted');});}
   else if(action==='toggle-week'){pushUndo();week.done=!week.done;markWeekDays(week,week.done);renderProgram();autoSave();}
   else if(action==='archive-week'){
     confirmAction('Archive "'+week.label+'"?','All days will move to Log.',()=>{
@@ -933,7 +940,8 @@ function weekAction(action,block,week,el){
       week.days.forEach(day=>archiveDayToLog(day,block,week));
       // Remove week from block
       block.weeks=block.weeks.filter(w=>w.id!==week.id);
-      renderProgram();renderLog();showToast(week.label+' archived');
+      renumberWeeks(block);
+      renderProgram();renderLog();autoSave();showToast('Week archived');
     });
   }
 }
