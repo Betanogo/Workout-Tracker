@@ -1377,25 +1377,39 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 
   // Import
-  document.getElementById('btn-import')?.addEventListener('click',()=>{
-    const input=document.createElement('input');input.type='file';input.accept='.xlsx,.xlsm,.xls';
-    input.onchange=function(){
-      if(!this.files.length)return;
+  // File input: handle selection directly (no nested input creation)
+  const importInput=document.getElementById('btn-import');
+  if(importInput){
+    importInput.addEventListener('change',function(){
+      console.log('File selected:', this.files.length);
+      if(!this.files||!this.files.length)return;
+      const file=this.files[0];
       const reader=new FileReader();
+      reader.onerror=()=>showToast('Could not read file');
       reader.onload=e=>{
         try{
+          console.log('Reading workbook...');
           const wb=XLSX.read(e.target.result,{type:'array',cellFormula:false,cellNF:false,raw:false});
-          const parsed=parseExcel(wb,this.files[0].name);
+          console.log('Sheets found:', wb.SheetNames);
+          const parsed=parseExcel(wb,file.name);
+          console.log('parseExcel returned', parsed.length, 'block(s)');
           window._pendingImport=parsed;
-          document.getElementById('import-sub').textContent='Found '+parsed.length+' block(s) from "'+this.files[0].name+'"';
-          document.getElementById('import-preview').innerHTML=parsed.map(b=>'<span style="color:var(--acc)">'+b.name+'</span><br>'+b.weeks.map(w=>'  '+w.label+': '+w.days.length+' days').join('<br>')).join('<br><br>');
+          const totalEx=parsed.reduce((s,b)=>s+b.weeks.reduce((s2,w)=>s2+w.days.reduce((s3,d)=>s3+d.exercises.length,0),0),0);
+          const sub=document.getElementById('import-sub');
+          if(sub)sub.textContent=parsed.length+' block(s), '+totalEx+' exercises from "'+file.name+'"';
+          const prev=document.getElementById('import-preview');
+          if(prev)prev.innerHTML=parsed.map(b=>'<span style="color:var(--acc)">'+b.name+'</span><br>'
+            +b.weeks.map(w=>'&nbsp;&nbsp;'+w.label+': '+w.days.length+' days, '+w.days.reduce((s,d)=>s+d.exercises.length,0)+' ex').join('<br>')).join('<br><br>');
           document.getElementById('modal-import')?.classList.remove('hidden');
-        }catch(err){showToast('Import failed: '+err.message);}
+        }catch(err){
+          console.error('Import error:',err);
+          showToast('Import failed: '+err.message);
+        }
       };
-      reader.readAsArrayBuffer(this.files[0]);
-    };
-    input.click();
-  });
+      reader.readAsArrayBuffer(file);
+      this.value=''; // allow re-selecting the same file
+    });
+  }
   document.getElementById('import-as-prog')?.addEventListener('click',()=>{
     if(!window._pendingImport)return;
     window._pendingImport.forEach(b=>blocks.push(b));renderProgram();autoSave();
@@ -1448,7 +1462,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     autoSave();
   });
   document.getElementById('btn-add-block')?.addEventListener('click',()=>{pushUndo();blocks.push(makeBlock('New Block',blocks.length));renderProgram();autoSave();showToast('Block added');});
-  document.getElementById('btn-import-nav')?.addEventListener('click',()=>document.getElementById('btn-import')?.click());
+  document.getElementById('btn-import-nav')?.addEventListener('click',()=>{console.log('Import button clicked');document.getElementById('btn-import')?.click();});
   document.getElementById('btn-log-menu')?.addEventListener('click',e=>{
     e.stopPropagation();
     document.querySelectorAll('.day-ctx-menu').forEach(m=>m.remove());
